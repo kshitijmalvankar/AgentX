@@ -32,8 +32,23 @@ struct SessionsView: View {
 struct SessionListView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
+    /// Projects you folded or unfolded; others follow `defaultExpanded`.
+    @State private var expandedOverride: [String: Bool] = [:]
 
     private var store: SessionStore { model.sessions }
+
+    /// Recently active projects start open; older ones start folded.
+    private func defaultExpanded(_ sessions: [SessionSummary]) -> Bool {
+        guard let latest = sessions.first?.modifiedDate else { return false }
+        return Date().timeIntervalSince(latest) < 14 * 86_400
+    }
+
+    private func isExpanded(_ group: (project: String, sessions: [SessionSummary])) -> Binding<Bool> {
+        Binding(
+            get: { !search.isEmpty || (expandedOverride[group.project] ?? defaultExpanded(group.sessions)) },
+            set: { expandedOverride[group.project] = $0 }
+        )
+    }
 
     private var filtered: [SessionSummary] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -65,23 +80,24 @@ struct SessionListView: View {
         let selection = Binding<String?>(get: { store.selectedKey }, set: { store.select($0) })
         List(selection: selection) {
             if !newLive.isEmpty {
-                Section("Starting") {
+                Section("Running") {
                     ForEach(newLive) { c in
                         LiveRow(conversation: c).tag(c.id as String?)
                     }
                 }
             }
             ForEach(groups, id: \.project) { group in
-                Section {
+                Section(isExpanded: isExpanded(group)) {
                     ForEach(group.sessions) { s in
                         SessionRow(summary: s, live: store.conversation(forSessionId: s.sessionId))
                             .tag(s.sessionId as String?)
                     }
                 } header: {
-                    HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
                         Text((group.project as NSString).lastPathComponent)
                         Spacer()
-                        Text("\(group.sessions.count)").foregroundStyle(.tertiary)
+                        Text("\(group.sessions.count)").monospacedDigit().foregroundStyle(.tertiary)
                     }
                     .help(group.project.abbreviatingHome)
                 }
@@ -114,28 +130,34 @@ private struct SessionRow: View {
     let live: Conversation?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(summary.title)
+                    .fontWeight(live?.liveState != nil ? .medium : .regular)
                     .lineLimit(2)
-                Spacer(minLength: 4)
-                if let state = live?.liveState {
-                    Image(systemName: state.symbol)
-                        .foregroundStyle(state == .waiting ? .orange : .blue)
-                        .symbolEffect(.pulse, isActive: state == .running || state == .waiting)
-                }
+                Text(meta)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            HStack(spacing: 6) {
-                Text(summary.modifiedDate.relative)
-                if let branch = summary.gitBranch, !branch.isEmpty {
-                    Label(branch, systemImage: "arrow.triangle.branch")
-                        .lineLimit(1)
-                }
+            Spacer(minLength: 4)
+            if let state = live?.liveState {
+                Image(systemName: state.symbol)
+                    .font(.caption)
+                    .foregroundStyle(state == .waiting ? .orange : .blue)
+                    .symbolEffect(.pulse, isActive: state == .running || state == .waiting)
+                    .help(state.label)
+                    .padding(.top, 2)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+    }
+
+    /// "2h ago · main" (a detached HEAD isn't worth showing).
+    private var meta: String {
+        var parts = [summary.modifiedDate.relative]
+        if let branch = summary.gitBranch, !branch.isEmpty, branch != "HEAD" { parts.append(branch) }
+        return parts.joined(separator: " · ")
     }
 }
 

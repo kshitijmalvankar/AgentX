@@ -35,62 +35,41 @@ struct ConversationView: View {
                 TerminalTab(conversation: conversation, startPhoneSync: startPhoneSync)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(conversation.title)
         .navigationSubtitle(conversation.cwd.abbreviatingHome)
     }
 
     // MARK: Header
 
+    /// One row that never forces the pane wider than the window: the title
+    /// truncates, and secondary settings live in the ⋯ menu.
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(conversation.title)
                     .font(.headline)
                     .lineLimit(1)
-                HStack(spacing: 8) {
-                    Label(conversation.projectName, systemImage: "folder")
-                    if let branch = conversation.gitBranch, !branch.isEmpty {
-                        Label(branch, systemImage: "arrow.triangle.branch")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             if let state = conversation.liveState { StateBadge(state: state) }
-
-            Menu {
-                Button("Default model") { Task { await store.setModel(nil, for: conversation) } }
-                Divider()
-                ForEach(model.models) { m in
-                    Button(m.displayName) { Task { await store.setModel(m.value, for: conversation) } }
-                }
-            } label: {
-                Label(modelLabel, systemImage: "cpu")
-            }
-            .fixedSize()
-            .help("Model for this session")
-
-            Menu {
-                ForEach(PermissionModeOption.allCases) { mode in
-                    Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
-                        if mode == conversation.permissionMode { Label(mode.label, systemImage: "checkmark") } else { Text(mode.label) }
-                    }
-                }
-            } label: {
-                Label("Permissions", systemImage: "lock.shield")
-            }
-            .fixedSize()
-            .help(conversation.permissionMode.label)
 
             Button {
                 if phoneSyncOn { tab = .terminal } else { startPhoneSync() }
             } label: {
-                Label(phoneSyncOn ? "On your phone" : "Continue on phone", systemImage: phoneSyncOn ? "iphone.radiowaves.left.and.right" : "iphone")
+                Image(systemName: phoneSyncOn ? "iphone.radiowaves.left.and.right" : "iphone")
+                    .foregroundStyle(phoneSyncOn ? Color.green : Color.secondary)
             }
-            .fixedSize()
-            .help(phoneSyncOn ? "Phone sync is on: open the Claude app on your phone, then Code." : "Run this session with Remote Control so you can keep going from the Claude app on your phone.")
+            .buttonStyle(.borderless)
+            .help(phoneSyncOn ? "Phone sync is on: open the Claude app on your phone, then Code."
+                              : "Continue on phone: run this session with Remote Control so you can keep going from the Claude app.")
 
             Picker("View", selection: $tab) {
                 ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
@@ -99,13 +78,57 @@ struct ConversationView: View {
             .labelsHidden()
             .fixedSize()
 
-            if conversation.isLive {
-                Button("End", systemImage: "stop.circle") { Task { await store.stop(conversation) } }
-                    .help("Stop the Claude Code process for this session. History is kept.")
+            Menu {
+                Menu("Model: \(modelLabel)") {
+                    Button { Task { await store.setModel(nil, for: conversation) } } label: {
+                        checked(conversation.model == nil, "Default")
+                    }
+                    ForEach(model.models) { m in
+                        Button { Task { await store.setModel(m.value, for: conversation) } } label: {
+                            checked(conversation.model == m.value, m.displayName)
+                        }
+                    }
+                }
+                Menu("Permissions: \(conversation.permissionMode.shortLabel)") {
+                    ForEach(PermissionModeOption.allCases) { mode in
+                        Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
+                            checked(mode == conversation.permissionMode, mode.label)
+                        }
+                    }
+                }
+                Divider()
+                Button(phoneSyncOn ? "Show Phone Sync" : "Continue on Phone", systemImage: "iphone") {
+                    if phoneSyncOn { tab = .terminal } else { startPhoneSync() }
+                }
+                if conversation.isLive {
+                    Divider()
+                    Button("End Session", systemImage: "stop.circle", role: .destructive) {
+                        Task { await store.stop(conversation) }
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Model, permissions, phone sync, end session")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder private func checked(_ on: Bool, _ title: String) -> some View {
+        if on { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
+    /// "AgentX · main · Opus": project, branch (not a detached HEAD), and any non-default settings.
+    private var subtitle: String {
+        var parts = [conversation.projectName]
+        if let branch = conversation.gitBranch, !branch.isEmpty, branch != "HEAD" { parts.append(branch) }
+        if conversation.model != nil { parts.append(modelLabel) }
+        if conversation.permissionMode != .default { parts.append(conversation.permissionMode.shortLabel) }
+        return parts.joined(separator: " · ")
     }
 
     private var terminal: TerminalSession? { model.terminals.session(for: conversation.id) }
@@ -139,7 +162,8 @@ struct ConversationView: View {
                     ApprovalCard(approval: approval) { answer in store.answer(approval, answer) }
                 }
             }
-            .padding(.horizontal, 16)
+            .readingColumn()
+            .padding(.horizontal, 28)
             .padding(.top, 8)
         }
     }
@@ -153,7 +177,7 @@ struct TranscriptView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     if conversation.isLoadingHistory && conversation.items.isEmpty {
                         ProgressView("Loading history…").frame(maxWidth: .infinity).padding(.top, 40)
                     }
@@ -161,29 +185,55 @@ struct TranscriptView: View {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                             .font(.callout)
+                            .padding(.bottom, 12)
                     }
-                    ForEach(conversation.items) { item in
+                    ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
                         TranscriptRow(item: item, cwd: conversation.cwd)
+                            .padding(.top, index == 0 ? 0 : Self.gap(after: conversation.items[index - 1].kind, before: item.kind))
                     }
-                    if !conversation.draftThinking.isEmpty && conversation.draftText.isEmpty {
-                        Label("Thinking…", systemImage: "brain")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !conversation.draftText.isEmpty {
-                        Text(conversation.draftText)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if conversation.liveState == .running || conversation.liveState == .starting {
-                        ProgressView().controlSize(.small)
-                    }
+                    liveTail
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(16)
+                .readingColumn()
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
             }
-            .defaultScrollAnchor(.bottom)
+            // Short conversations start at the top; new messages keep the view at the bottom.
+            .defaultScrollAnchor(.top, for: .alignment)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .onChange(of: conversation.items.count) { proxy.scrollTo("bottom", anchor: .bottom) }
             .onChange(of: conversation.draftText.count / 200) { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
+    }
+
+    /// What's streaming in right now.
+    @ViewBuilder private var liveTail: some View {
+        if !conversation.draftText.isEmpty {
+            Text(conversation.draftText)
+                .font(.system(size: 14))
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 12)
+        } else if conversation.liveState == .running || conversation.liveState == .starting {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.mini)
+                Text(conversation.draftThinking.isEmpty ? "Working…" : "Thinking…")
+            }
+            .font(.callout)
+            .foregroundStyle(.tertiary)
+            .padding(.top, 12)
+        }
+    }
+
+    /// Tool calls sit close together; messages get room to breathe.
+    static func gap(after previous: TranscriptKind, before item: TranscriptKind) -> CGFloat {
+        switch (previous, item) {
+        case (.tool, .tool), (.thinking, .tool), (.tool, .thinking): 2
+        case (_, .result): 4
+        case (.user, _), (_, .user): 22
+        default: 12
         }
     }
 }
@@ -223,32 +273,17 @@ struct TranscriptRow: View {
     var body: some View {
         switch item.kind {
         case .user(let text):
-            HStack {
-                Spacer(minLength: 60)
-                Text(text)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.16), in: .rect(cornerRadius: 14))
-            }
+            UserBubble(text: text)
         case .assistant(let text):
             MarkdownText(text: text)
         case .thinking(let text):
-            DisclosureGroup {
-                Text(text)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                Label("Thinking", systemImage: "brain").font(.callout).foregroundStyle(.secondary)
-            }
+            ThinkingRow(text: text)
         case .tool(let call):
             ToolCallCard(call: call, cwd: cwd)
         case .notice(let text, let isError):
             Text(text)
                 .font(.caption)
-                .foregroundStyle(isError ? .red : .secondary)
+                .foregroundStyle(isError ? Color.red : Color.secondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity)
         case .result(let summary):
@@ -257,28 +292,93 @@ struct TranscriptRow: View {
     }
 }
 
+/// Your message, right-aligned. Long ones (like a pasted report) fold to 8 lines.
+private struct UserBubble: View {
+    let text: String
+    @State private var expanded = false
+
+    private var isLong: Bool { text.count > 600 || text.filter { $0 == "\n" }.count > 8 }
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 80)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(text)
+                    .font(.system(size: 14))
+                    .lineSpacing(3)
+                    .lineLimit(isLong && !expanded ? 8 : nil)
+                    .textSelection(.enabled)
+                if isLong {
+                    Button(expanded ? "Show less" : "Show more") {
+                        withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 16))
+            .frame(maxWidth: 560, alignment: .trailing)
+        }
+    }
+}
+
+/// Claude's reasoning summary, folded away.
+private struct ThinkingRow: View {
+    let text: String
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkle").frame(width: 16)
+                    Text("Thought it through")
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                }
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if expanded {
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                    .padding(.leading, 24)
+            }
+        }
+    }
+}
+
+/// "Done in 8s" under a finished reply (errors stand out).
 private struct ResultFooter: View {
     let summary: RunSummary
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: summary.isError ? "xmark.octagon" : "checkmark.seal")
-            Text(text)
+        if summary.isError {
+            Label("Stopped: \(summary.subtype.replacingOccurrences(of: "_", with: " "))", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.red)
+        } else if let duration {
+            Text("Done in \(duration)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .help(summary.costUSD.map { String(format: "Estimated API-equivalent cost: $%.4f (your plan covers this)", $0) } ?? "")
         }
-        .font(.caption)
-        .foregroundStyle(summary.isError ? .red : .secondary)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .help(summary.costUSD.map { String(format: "Estimated API-equivalent cost: $%.4f (your plan covers this)", $0) } ?? "")
     }
 
-    private var text: String {
-        var parts: [String] = [summary.isError ? "Stopped: \(summary.subtype.replacingOccurrences(of: "_", with: " "))" : "Done"]
-        if let ms = summary.durationMs {
-            let seconds = Int(ms / 1000)
-            parts.append(seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s")
-        }
-        if let turns = summary.turns { parts.append("\(turns) turn\(turns == 1 ? "" : "s")") }
-        return parts.joined(separator: " · ")
+    private var duration: String? {
+        guard let ms = summary.durationMs else { return nil }
+        let seconds = max(1, Int(ms / 1000))
+        return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
     }
 }
 
@@ -293,20 +393,21 @@ struct Composer: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField(isWorking ? "Send a follow-up (Claude will see it after this step)…" : "Message Claude…", text: $text, axis: .vertical)
+            TextField(isWorking ? "Send a follow-up…" : "Message Claude", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
+                .font(.system(size: 14))
                 .lineLimit(1...10)
                 .focused($focused)
                 .onSubmit(submit)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .glassEffect(.regular, in: .rect(cornerRadius: 18))
             if isWorking {
                 Button("Stop", systemImage: "stop.fill", action: stop)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.glass)
                     .controlSize(.large)
-                    .help("Interrupt Claude")
+                    .help("Interrupt Claude (⌘.)")
                     .keyboardShortcut(".", modifiers: .command)
             }
             Button("Send", systemImage: "arrow.up", action: submit)
@@ -315,7 +416,10 @@ struct Composer: View {
                 .controlSize(.large)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(12)
+        .readingColumn()
+        .padding(.horizontal, 28)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
         .onAppear { focused = true }
     }
 

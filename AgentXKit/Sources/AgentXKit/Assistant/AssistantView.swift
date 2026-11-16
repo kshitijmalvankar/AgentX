@@ -136,13 +136,21 @@ struct AssistantChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(conversation.title).font(.headline).lineLimit(1)
-                Spacer()
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(conversation.title).font(.headline).lineLimit(1).truncationMode(.tail)
+                    Text("Assistant · Calendar, Files, Apps, Mail and more")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if let state = conversation.liveState { StateBadge(state: state) }
                 if conversation.isLive {
                     Button("End", systemImage: "stop.circle") { Task { await store.stop(conversation) } }
-                        .help("Stop this conversation's Claude Code process. You can pick it up again later.")
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help("End this conversation's Claude Code process. You can pick it up again later.")
                 }
             }
             .padding(.horizontal, 16)
@@ -170,7 +178,8 @@ struct ApprovalList: View {
                     ApprovalCard(approval: approval) { answer in model.sessions.answer(approval, answer) }
                 }
             }
-            .padding(.horizontal, 16)
+            .readingColumn()
+            .padding(.horizontal, 28)
             .padding(.top, 8)
         }
     }

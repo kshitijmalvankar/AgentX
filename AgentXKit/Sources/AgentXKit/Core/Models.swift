@@ -93,6 +93,13 @@ public enum PermissionModeOption: String, CaseIterable, Identifiable, Sendable {
     case `default`, acceptEdits, plan
 
     public var id: String { rawValue }
+    public var shortLabel: String {
+        switch self {
+        case .default: "Ask first"
+        case .acceptEdits: "Auto-accept edits"
+        case .plan: "Plan only"
+        }
+    }
     public var label: String {
         switch self {
         case .default: "Ask before risky actions"

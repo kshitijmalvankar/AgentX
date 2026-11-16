@@ -7,62 +7,71 @@ struct MarkdownText: View {
 
     var body: some View {
         Markdown(text)
-            .markdownTheme(.basic)
+            .markdownTheme(.agentX)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// A collapsible card for one tool call and its result.
+/// One tool call as a quiet activity line ("Changed appearance · Dark").
+/// Click to see the details (diff, command, output).
 struct ToolCallCard: View {
     let call: ToolCall
     let cwd: String
     @State private var expanded = false
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let activity = ToolPresentation.activity(name: call.name, input: call.input, cwd: cwd)
+        VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.snappy) { expanded.toggle() }
+                withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: ToolPresentation.symbol(for: call.name))
-                        .frame(width: 18)
-                        .foregroundStyle(.secondary)
-                    Text(ToolPresentation.displayName(call.name))
-                        .fontWeight(.medium)
-                    Text(ToolPresentation.summary(name: call.name, input: call.input, cwd: cwd))
-                        .foregroundStyle(.secondary)
+                    status.frame(width: 16)
+                    (Text(activity.title).foregroundStyle(call.isError ? Color.red : Color.secondary)
+                        + Text(activity.detail.isEmpty ? "" : "  \(activity.detail)").foregroundStyle(Color.secondary.opacity(0.7)))
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    status
                     Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .foregroundStyle(.tertiary)
+                        .opacity(hovering || expanded ? 1 : 0)
                 }
+                .font(.callout)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .background(hovering ? Color.secondary.opacity(0.08) : .clear, in: .rect(cornerRadius: 6))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help("\(ToolPresentation.displayName(call.name)): \(activity.title) \(activity.detail)")
 
             if expanded {
-                ToolInputView(name: call.name, input: call.input)
-                if let result = call.result, !result.isEmpty {
-                    OutputBlock(text: result, isError: call.isError)
+                VStack(alignment: .leading, spacing: 8) {
+                    ToolInputView(name: call.name, input: call.input)
+                    if let result = call.result, !result.isEmpty {
+                        OutputBlock(text: result, isError: call.isError)
+                    }
                 }
+                .font(.callout)
+                .padding(.leading, 32)
+                .padding(.bottom, 4)
             }
         }
-        .font(.callout)
-        .padding(10)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
+        .padding(.horizontal, -8)   // line the text up with the reply text
     }
 
     @ViewBuilder private var status: some View {
         if !call.isFinished {
             ProgressView().controlSize(.mini)
         } else if call.isError {
-            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+            Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
         } else {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green.opacity(0.8))
+            Image(systemName: ToolPresentation.symbol(for: call.name)).foregroundStyle(.tertiary)
         }
     }
 }

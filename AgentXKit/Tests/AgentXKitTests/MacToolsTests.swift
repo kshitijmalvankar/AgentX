@@ -95,3 +95,31 @@ struct ProcessAndAppleScriptTests {
         #expect(clash["isError"]?.bool == true, "never overwrites")
     }
 }
+
+@Suite("Tool activity lines")
+struct ToolActivityTests {
+    @Test func everyMacToolHasAPlainLanguageLine() {
+        for tool in MacToolbox.tools {
+            #expect(ToolPresentation.agentxActivity[tool.name] != nil, "missing activity for \(tool.name)")
+        }
+    }
+
+    @Test func readsLikeASentence() {
+        let dark = ToolPresentation.activity(name: "mcp__agentx__system_appearance", input: ["mode": "dark"], cwd: nil)
+        #expect(dark.title == "Changed appearance" && dark.detail == "Dark")
+        let week = ToolPresentation.activity(name: "mcp__agentx__calendar_events",
+                                              input: ["start": "2026-11-23T00:00", "end": "2026-11-29T23:59"], cwd: nil)
+        #expect(week.title == "Checked your calendar")
+        #expect(week.detail.contains("23") && week.detail.contains("29") && week.detail.contains("–"))
+        let bash = ToolPresentation.activity(name: "Bash", input: ["command": "ps aux", "description": "Inspect processes"], cwd: nil)
+        #expect(bash.title == "Ran a command" && bash.detail == "Inspect processes")
+        let edit = ToolPresentation.activity(name: "Edit", input: ["file_path": "/p/app/src/a.swift"], cwd: "/p/app")
+        #expect(edit.title == "Edited" && edit.detail == "src/a.swift")
+    }
+
+    @Test func transcriptSpacingGroupsToolCalls() {
+        let call = TranscriptKind.tool(ToolCall(id: "1", name: "Bash", input: [:]))
+        #expect(TranscriptView.gap(after: call, before: call) < TranscriptView.gap(after: .assistant("x"), before: .assistant("y")))
+        #expect(TranscriptView.gap(after: .user("q"), before: .assistant("a")) > TranscriptView.gap(after: .assistant("a"), before: call))
+    }
+}
