@@ -148,7 +148,7 @@ public struct TranscriptBuilder: Sendable {
     private mutating func attachResult(_ block: JSONValue) {
         guard let toolID = block["tool_use_id"]?.string, let index = toolIndex[toolID],
               case .tool(var call) = items[index].kind else { return }
-        call.result = (block["content"] ?? .null).flattenedText
+        call.result = Self.capped((block["content"] ?? .null).flattenedText)
         call.isError = block["is_error"]?.bool ?? false
         items[index].kind = .tool(call)
     }
@@ -157,6 +157,16 @@ public struct TranscriptBuilder: Sendable {
         // History can repeat a uuid across content splits; keep ids unique.
         let uniqueID = items.contains(where: { $0.id == id }) ? id + "-" + UUID().uuidString.prefix(6) : id
         items.append(TranscriptItem(id: uniqueID, kind: kind))
+    }
+
+    /// Tool results can be huge (a whole file, a long log). Keep the start in
+    /// memory; the full text stays in the session file on disk.
+    static let resultLimit = 20_000
+
+    static func capped(_ text: String) -> String {
+        guard text.utf8.count > resultLimit * 2 else { return text }
+        let kept = text.prefix(resultLimit)
+        return kept + "\n… (output shortened in AgentX; \(text.count - kept.count) more characters are in the session file)"
     }
 
     static func tag(_ name: String, in text: String) -> String? {

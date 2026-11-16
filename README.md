@@ -8,7 +8,7 @@ A native macOS command center for Claude. It has your regular Claude chats (sync
 scripts/run-dev.sh
 ```
 
-That generates the Xcode project, builds AgentX and its desktop widgets with `xcodebuild`, installs the app at `build/AgentX.app`, and opens it. To work in Xcode instead:
+That generates the Xcode project, builds an optimized (Release) AgentX and its desktop widgets with `xcodebuild`, installs the app at `build/AgentX.app`, and opens it. Use `scripts/run-dev.sh --debug` for a Debug build to attach the debugger to. To work in Xcode instead:
 
 ```bash
 xcodegen generate && open AgentX.xcodeproj
@@ -106,6 +106,17 @@ The **GitHub** section and a dashboard card show your contribution calendar (the
 ### System
 
 The System section reads the same kernel counters Activity Monitor uses: CPU ticks per core, VM statistics (memory used = app + wired + compressed), swap, memory pressure, IOKit battery data, interface byte counters and libproc per-process usage. It samples every 2 seconds, but only while the System section, the dashboard card or the menu bar is showing. **Ask Claude** starts a Claude Code session in your home folder with the current snapshot. Claude asks before running any command.
+
+### Keeping it light
+
+AgentX keeps idle costs low and gives memory back when it isn't needed:
+- A Claude Code process uses about 300 MB. One that has been idle for 10 minutes is closed, and your next message resumes the session.
+- The Chats web page is released after 15 minutes out of view. Your sign-in is kept.
+- Only the 6 most recently viewed transcripts stay in memory. Tool output over 40 KB keeps its first 20,000 characters in memory (the full text stays in the session file).
+- When another app adds to a session you're viewing, only the new messages are fetched.
+- Messages from agent-core are parsed with `JSONSerialization`, off the main thread. That's 4.6× faster than the earlier `Codable` path on an 11 MB transcript.
+- Tool paths are cached between launches, so the engine is ready in about 170 ms instead of 700 ms. One short-lived Claude Code process reads both your account and your plan usage at startup.
+- The Mac vitals are sampled only while something shows them.
 
 ### Sessions open in other apps
 

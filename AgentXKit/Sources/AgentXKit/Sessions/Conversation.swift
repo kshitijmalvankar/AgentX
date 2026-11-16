@@ -64,6 +64,19 @@ public final class Conversation: Identifiable {
 
     public var isLoadingHistory = false
     public var historyLoaded = false
+
+    /// Streaming text arrives a few characters at a time; it's published about
+    /// 25 times a second instead of on every delta.
+    @ObservationIgnored private var pendingText = ""
+    @ObservationIgnored private var pendingThinking = ""
+    @ObservationIgnored private var flushScheduled = false
+    /// Messages loaded from disk, so a reload can fetch only what's new.
+    @ObservationIgnored var historyCount = 0
+    @ObservationIgnored var lastHistoryUUID: String?
+    /// Live items were added since the last load (a reload then has to be full).
+    @ObservationIgnored var hasLiveItems = false
+    /// When this conversation was last shown (old transcripts are unloaded).
+    @ObservationIgnored var lastViewed = Date()
     public var error: String?
 
     public var items: [TranscriptItem] { transcript.items }
@@ -92,8 +105,31 @@ public final class Conversation: Identifiable {
         for m in messages { builder.add(m) }
         // Keep anything that arrived live while history was loading.
         for item in transcript.items { builder.appendExisting(item) }
+        hasLiveItems = !transcript.items.isEmpty
         transcript = builder
+        rememberHistory(messages, count: messages.count)
         historyLoaded = true
+    }
+
+    /// Append messages that follow what's already loaded from disk.
+    func appendHistory(_ messages: [JSONValue]) {
+        guard !messages.isEmpty else { return }
+        for m in messages { transcript.add(m) }
+        rememberHistory(messages, count: historyCount + messages.count)
+    }
+
+    private func rememberHistory(_ messages: [JSONValue], count: Int) {
+        historyCount = count
+        if let uuid = messages.last?["uuid"]?.string { lastHistoryUUID = uuid }
+    }
+
+    /// Free the transcript (it's reloaded from disk when shown again).
+    func unload() {
+        transcript = TranscriptBuilder()
+        historyLoaded = false
+        historyCount = 0
+        lastHistoryUUID = nil
+        hasLiveItems = false
     }
 
     /// Replace the transcript with the session's newest main line from disk.
@@ -101,17 +137,44 @@ public final class Conversation: Identifiable {
         var builder = TranscriptBuilder()
         for m in messages { builder.add(m) }
         transcript = builder
-        draftText = ""
-        draftThinking = ""
+        clearDraft()
+        hasLiveItems = false
+        historyCount = 0
+        lastHistoryUUID = nil
+        rememberHistory(messages, count: messages.count)
         historyLoaded = true
     }
 
     func addLocalPrompt(_ text: String) {
         transcript.addLocalUserText(text)
+        hasLiveItems = true
     }
 
     func addNotice(_ text: String, isError: Bool = false) {
         transcript.addNotice(text, isError: isError)
+        hasLiveItems = true
+    }
+
+    private func clearDraft() {
+        pendingText = ""
+        pendingThinking = ""
+        draftText = ""
+        draftThinking = ""
+    }
+
+    private func scheduleDraftFlush() {
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(40))
+            self?.flushDraft()
+        }
+    }
+
+    private func flushDraft() {
+        flushScheduled = false
+        if !pendingText.isEmpty { draftText += pendingText; pendingText = "" }
+        if !pendingThinking.isEmpty { draftThinking += pendingThinking; pendingThinking = "" }
     }
 
     /// Apply one live SDK message.
@@ -121,25 +184,26 @@ public final class Conversation: Identifiable {
             guard message["parent_tool_use_id"]?.isNull ?? true, let event = message["event"] else { return }
             switch event["type"]?.string {
             case "message_start":
-                draftText = ""
-                draftThinking = ""
+                clearDraft()
             case "content_block_delta":
                 let delta = event["delta"]
-                if let t = delta?["text"]?.string { draftText += t }
-                if let t = delta?["thinking"]?.string { draftThinking += t }
+                if let t = delta?["text"]?.string { pendingText += t }
+                if let t = delta?["thinking"]?.string { pendingThinking += t }
+                scheduleDraftFlush()
             default:
                 break
             }
         case "assistant":
-            draftText = ""
-            draftThinking = ""
+            clearDraft()
             transcript.add(message, live: true)
+            hasLiveItems = true
         case "user", "system":
             transcript.add(message, live: true)
+            hasLiveItems = true
         case "result":
-            draftText = ""
-            draftThinking = ""
+            clearDraft()
             transcript.add(message, live: true)
+            hasLiveItems = true
         default:
             break
         }

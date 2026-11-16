@@ -63,6 +63,13 @@ public final class SessionStore {
     @ObservationIgnored private var watcher: DirectoryWatcher?
     @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// Conversation id → timer that closes its idle Claude Code process.
+    @ObservationIgnored private var idleTimers: [String: Task<Void, Never>] = [:]
+    /// An idle Claude Code process (~300 MB) is closed after this long; the
+    /// next message resumes the session.
+    @ObservationIgnored var idleProcessTimeout: Duration = .seconds(600)
+    /// How many non-running transcripts stay loaded in memory.
+    static let loadedTranscriptLimit = 6
     @ObservationIgnored var onApprovalRequested: ((ApprovalRequest) -> Void)?
     /// A Claude Code turn ended (`result` message): used to finish automation runs.
     @ObservationIgnored var onTurnFinished: ((Conversation, JSONValue) -> Void)?
@@ -90,13 +97,7 @@ public final class SessionStore {
 
     public func selectAssistant(_ key: String?) {
         assistantSelectedKey = key
-        guard let key else { return }
-        if let existing = conversations[key] ?? conversation(forSessionId: key) {
-            reloadIfChangedElsewhere(existing)
-            return
-        }
-        guard let summary = sessions.first(where: { $0.sessionId == key }) else { return }
-        open(summary)
+        show(key)
     }
 
     public var liveConversations: [Conversation] {
@@ -111,13 +112,43 @@ public final class SessionStore {
     /// Select a row; opens the session (and loads its history) if needed.
     public func select(_ key: String?) {
         selectedKey = key
+        show(key)
+    }
+
+    /// Open (or reload) a conversation that's about to be shown, and unload old ones.
+    private func show(_ key: String?) {
         guard let key else { return }
         if let existing = conversations[key] ?? conversation(forSessionId: key) {
-            reloadIfChangedElsewhere(existing)
-            return
+            existing.lastViewed = Date()
+            if !existing.historyLoaded, !existing.isLoadingHistory, existing.sessionId != nil {
+                Task { await loadHistory(existing) }
+            } else {
+                reloadIfChangedElsewhere(existing)
+            }
+        } else if let summary = sessions.first(where: { $0.sessionId == key }) {
+            open(summary)
         }
-        guard let summary = sessions.first(where: { $0.sessionId == key }) else { return }
-        open(summary)
+        unloadOldTranscripts()
+    }
+
+    /// Keep only the most recently viewed transcripts in memory.
+    private func unloadOldTranscripts() {
+        let shown = Set([selectedConversation?.id, selectedAssistantConversation?.id].compactMap { $0 })
+        let candidates = conversations.values
+            .filter { $0.historyLoaded && !$0.isLive && $0.automationRunID == nil && !shown.contains($0.id) && $0.sessionId != nil }
+            .sorted { $0.lastViewed > $1.lastViewed }
+        for c in candidates.dropFirst(Self.loadedTranscriptLimit) { c.unload() }
+    }
+
+    /// Close a live session's Claude Code process once it has sat idle for a while.
+    private func scheduleIdleClose(_ c: Conversation) {
+        idleTimers[c.id]?.cancel()
+        let timeout = idleProcessTimeout
+        idleTimers[c.id] = Task { [weak self, weak c] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, let c, c.liveState == .idle, c.liveHandle != nil else { return }
+            await self.stop(c)
+        }
     }
 
     /// Other apps that have this conversation's session open right now.
@@ -226,18 +257,29 @@ public final class SessionStore {
         c.isLoadingHistory = true
         defer { c.isLoadingHistory = false }
         do {
-            let messages = try await client.call("sessions.messages", ["sessionId": .string(sessionId), "dir": .string(c.cwd)], as: [JSONValue].self)
+            let messages = try await client.call("sessions.messages", ["sessionId": .string(sessionId), "dir": .string(c.cwd)]).array ?? []
             c.loadHistory(messages)
         } catch {
             c.error = "Couldn't load history: \(error.localizedDescription)"
         }
     }
 
-    /// Replace the transcript with the session's newest main line on disk.
+    /// Bring the transcript up to the session's newest main line on disk.
+    /// When nothing was added live, only the new messages are fetched (checked
+    /// against the last one already loaded); otherwise it's a full reload.
     public func reloadHistory(_ c: Conversation) async {
         guard let sessionId = c.sessionId else { return }
         do {
-            let messages = try await client.call("sessions.messages", ["sessionId": .string(sessionId), "dir": .string(c.cwd)], as: [JSONValue].self)
+            if !c.hasLiveItems, c.historyLoaded, c.historyCount > 0, let last = c.lastHistoryUUID {
+                let tail = try await client.call("sessions.messages", [
+                    "sessionId": .string(sessionId), "dir": .string(c.cwd), "offset": .number(Double(c.historyCount - 1)),
+                ]).array ?? []
+                if tail.first?["uuid"]?.string == last {
+                    c.appendHistory(Array(tail.dropFirst()))
+                    return
+                }
+            }
+            let messages = try await client.call("sessions.messages", ["sessionId": .string(sessionId), "dir": .string(c.cwd)]).array ?? []
             c.replaceHistory(messages)
         } catch {
             c.error = "Couldn't reload history: \(error.localizedDescription)"
@@ -434,6 +476,7 @@ public final class SessionStore {
         case "session.state":
             guard let c = conversation(forHandle: handle), let state = params["state"]?.string.flatMap(LiveState.init) else { return }
             c.liveState = state
+            if state == .idle { scheduleIdleClose(c) } else { idleTimers.removeValue(forKey: c.id)?.cancel() }
             if state == .idle { scheduleRefresh(after: .milliseconds(500)) }
 
         case "session.event":

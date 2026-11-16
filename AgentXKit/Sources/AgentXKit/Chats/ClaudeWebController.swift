@@ -29,21 +29,34 @@ public final class ClaudeWebController: NSObject {
     public var showGoogleSignInTip = false
     public private(set) var lastDownload: URL?
 
-    @ObservationIgnored let webView: WKWebView
+    @ObservationIgnored private(set) var webView: WKWebView
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var hasLoaded = false
+    @ObservationIgnored private var unloadTask: Task<Void, Never>?
+    /// claude.ai's web process uses a few hundred MB; it's released after the
+    /// Chats section has been out of sight this long (sign-in is kept).
+    static let unloadAfter: Duration = .seconds(15 * 60)
 
     override private init() {
+        webView = Self.makeWebView()
+        super.init()
+        attach()
+    }
+
+    private static func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()  // persistent: sign in once
         config.applicationNameForUserAgent = "AgentX/0.1"
         config.preferences.isElementFullscreenEnabled = true
         config.userContentController.addUserScript(WKUserScript(
             source: Self.hideCodeLinksScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        super.init()
+        return webView
+    }
+
+    private func attach() {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         observations = [
@@ -58,6 +71,37 @@ public final class ClaudeWebController: NSObject {
                 }
             },
         ]
+    }
+
+    /// Chats came into view: cancel any pending unload and make sure the page is there.
+    func didShow() {
+        unloadTask?.cancel()
+        unloadTask = nil
+        loadIfNeeded()
+    }
+
+    /// Chats went out of view: release the web page if it stays hidden.
+    func didHide() {
+        unloadTask?.cancel()
+        unloadTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.unloadAfter)
+            guard !Task.isCancelled else { return }
+            self?.unload()
+        }
+    }
+
+    /// Swap in a fresh, empty web view so WebKit frees the old page's process.
+    private func unload() {
+        observations = []
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView = Self.makeWebView()
+        attach()
+        hasLoaded = false
+        canGoBack = false
+        canGoForward = false
+        isLoading = false
     }
 
     /// Load claude.ai the first time the Chats section is shown.

@@ -14,7 +14,8 @@ struct ChatsView: View {
             .overlay(alignment: .bottomTrailing) {
                 if web.isLoading { ProgressView().controlSize(.small).padding(12) }
             }
-            .onAppear { web.loadIfNeeded() }
+            .onAppear { web.didShow() }
+            .onDisappear { web.didHide() }
             .navigationTitle("Chats")
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {

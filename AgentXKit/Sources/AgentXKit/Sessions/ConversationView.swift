@@ -187,11 +187,15 @@ struct TranscriptView: View {
                             .font(.callout)
                             .padding(.bottom, 12)
                     }
-                    ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
+                    let items = conversation.items
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        // Finished rows don't change: skip re-rendering them (Markdown is costly).
                         TranscriptRow(item: item, cwd: conversation.cwd)
-                            .padding(.top, index == 0 ? 0 : Self.gap(after: conversation.items[index - 1].kind, before: item.kind))
+                            .equatable()
+                            .padding(.top, index == 0 ? 0 : Self.gap(after: items[index - 1].kind, before: item.kind))
                     }
-                    liveTail
+                    // Streaming text redraws only this part of the transcript.
+                    LiveTail(conversation: conversation, proxy: proxy)
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .readingColumn()
@@ -203,27 +207,6 @@ struct TranscriptView: View {
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .onChange(of: conversation.items.count) { proxy.scrollTo("bottom", anchor: .bottom) }
-            .onChange(of: conversation.draftText.count / 200) { proxy.scrollTo("bottom", anchor: .bottom) }
-        }
-    }
-
-    /// What's streaming in right now.
-    @ViewBuilder private var liveTail: some View {
-        if !conversation.draftText.isEmpty {
-            Text(conversation.draftText)
-                .font(.system(size: 14))
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
-        } else if conversation.liveState == .running || conversation.liveState == .starting {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.mini)
-                Text(conversation.draftThinking.isEmpty ? "Working…" : "Thinking…")
-            }
-            .font(.callout)
-            .foregroundStyle(.tertiary)
-            .padding(.top, 12)
         }
     }
 
@@ -266,7 +249,36 @@ private struct OpenElsewhereBanner: View {
     }
 }
 
-struct TranscriptRow: View {
+/// What's streaming in right now (its own view, so typing-speed updates
+/// don't re-render the rest of the transcript).
+private struct LiveTail: View {
+    let conversation: Conversation
+    let proxy: ScrollViewProxy
+
+    var body: some View {
+        Group {
+            if !conversation.draftText.isEmpty {
+                Text(conversation.draftText)
+                    .font(.system(size: 14))
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 12)
+            } else if conversation.liveState == .running || conversation.liveState == .starting {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text(conversation.draftThinking.isEmpty ? "Working…" : "Thinking…")
+                }
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 12)
+            }
+        }
+        .onChange(of: conversation.draftText.count / 200) { proxy.scrollTo("bottom", anchor: .bottom) }
+    }
+}
+
+struct TranscriptRow: View, Equatable {
     let item: TranscriptItem
     let cwd: String
 
