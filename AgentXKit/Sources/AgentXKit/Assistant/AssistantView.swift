@@ -109,19 +109,16 @@ private struct AssistantHome: View {
     }
 }
 
-/// Suggestion chips that wrap onto new lines.
+/// Suggestion chips: capsules sized to their text, wrapping onto new lines.
 struct FlowSuggestions: View {
     let ask: (String) -> Void
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 8)], spacing: 8) {
+        FlowLayout(spacing: 8, lineSpacing: 8) {
             ForEach(AssistantSuggestions.all, id: \.self) { suggestion in
-                Button { ask(suggestion) } label: {
-                    Text(suggestion)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineLimit(1)
-                }
-                .buttonStyle(.glass)
+                Button(suggestion) { ask(suggestion) }
+                    .secondaryButton()
+                    .lineLimit(1)
             }
         }
     }

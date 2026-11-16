@@ -330,7 +330,7 @@ private struct UserBubble: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 16))
+            .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: Radius.field))
             .frame(maxWidth: 560, alignment: .trailing)
         }
     }
@@ -413,18 +413,18 @@ struct Composer: View {
                 .onSubmit(submit)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                .glassEffect(.regular, in: .rect(cornerRadius: Radius.field))
             if isWorking {
                 Button("Stop", systemImage: "stop.fill", action: stop)
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .secondaryButton()
                     .controlSize(.large)
                     .help("Interrupt Claude (⌘.)")
                     .keyboardShortcut(".", modifiers: .command)
             }
             Button("Send", systemImage: "arrow.up", action: submit)
                 .labelStyle(.iconOnly)
-                .buttonStyle(.glassProminent)
+                .primaryButton()
                 .controlSize(.large)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
@@ -460,7 +460,7 @@ private struct TerminalHostedNote: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Show Terminal", action: show)
+            Button("Show Terminal", action: show).secondaryButton()
         }
         .padding(12)
     }
@@ -503,9 +503,9 @@ private struct TerminalTab: View {
             } description: {
                 Text("Runs the real claude CLI on this session, for slash commands and anything the chat view doesn't cover. With phone sync, you can also keep going from the Claude app on your phone.")
             } actions: {
-                Button("Open Terminal") { launch(remoteControl: false) }
+                Button("Open Terminal") { launch(remoteControl: false) }.secondaryButton()
                 Button("Open with Phone Sync", systemImage: "iphone", action: startPhoneSync)
-                    .buttonStyle(.glassProminent)
+                    .primaryButton()
             }
         }
     }
@@ -516,18 +516,18 @@ private struct TerminalTab: View {
                 Image(systemName: "stop.circle").foregroundStyle(.secondary)
                 Text("claude exited\(code.map { " (code \($0))" } ?? "").")
                 Spacer()
-                Button("Restart") { launch(remoteControl: terminal.remoteControl) }
-                Button("Close") { model.terminals.stop(conversation.id) }
+                Button("Restart") { launch(remoteControl: terminal.remoteControl) }.secondaryButton().controlSize(.small)
+                Button("Close") { model.terminals.stop(conversation.id) }.secondaryButton().controlSize(.small)
             } else if terminal.remoteControl {
                 Image(systemName: "iphone.radiowaves.left.and.right").foregroundStyle(.green)
                 Text("Phone sync on. On your phone, open the Claude app, then Code. The first time, answer Claude Code's Remote Control prompt below.")
                 Spacer()
-                Button("Stop") { model.terminals.stop(conversation.id) }
+                Button("Stop") { model.terminals.stop(conversation.id) }.secondaryButton().controlSize(.small)
             } else {
                 Image(systemName: "terminal").foregroundStyle(.secondary)
                 Text("Running claude in \(conversation.projectName).")
                 Spacer()
-                Button("Stop") { model.terminals.stop(conversation.id) }
+                Button("Stop") { model.terminals.stop(conversation.id) }.secondaryButton().controlSize(.small)
             }
         }
         .font(.caption)

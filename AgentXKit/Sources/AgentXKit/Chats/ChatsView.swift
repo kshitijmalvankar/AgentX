@@ -66,7 +66,7 @@ private struct GoogleSignInTip: View {
                 .buttonStyle(.plain)
         }
         .padding(14)
-        .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .rect(cornerRadius: 16))
+        .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .agentCard)
         .padding(12)
         .frame(maxWidth: 640)
     }
@@ -93,9 +93,9 @@ private struct SignInLinkSheet: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Cancel", role: .cancel) { dismiss() }.secondaryButton()
                 Button("Open", action: openLink)
-                    .buttonStyle(.glassProminent)
+                    .primaryButton()
                     .keyboardShortcut(.defaultAction)
                     .disabled(link.isEmpty)
             }

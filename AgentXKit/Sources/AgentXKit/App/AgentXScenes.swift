@@ -188,11 +188,11 @@ private struct EngineBanner: View {
     var body: some View {
         if case .failed(let why) = model.client.status {
             banner(why, symbol: "exclamationmark.triangle.fill", tint: .red) {
-                Button("Retry") { Task { await model.restartEngine() } }
+                Button("Retry") { Task { await model.restartEngine() } }.secondaryButton()
             }
         } else if let account = model.account?.account, !account.isSignedIn {
             banner("Claude Code isn't signed in on this Mac. Sign in with your Claude account to use your plan.", symbol: "person.crop.circle.badge.exclamationmark", tint: .orange) {
-                Button("Sign In…") { model.showLogin = true }
+                Button("Sign In…") { model.showLogin = true }.secondaryButton()
             }
         }
     }
@@ -206,7 +206,7 @@ private struct EngineBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .glassEffect(.regular.tint(tint.opacity(0.12)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(tint.opacity(0.12)), in: .agentCard)
         .padding(12)
     }
 }
@@ -224,7 +224,7 @@ struct LoginSheet: View {
             if let terminal = model.terminals.session(for: Self.terminalID) {
                 TerminalView(session: terminal)
                     .frame(minHeight: 360)
-                    .clipShape(.rect(cornerRadius: 8))
+                    .clipShape(.rect(cornerRadius: Radius.inset))
             } else if model.client.paths?.claude == nil {
                 Text("The Claude Code CLI wasn't found.").foregroundStyle(.red)
             }
@@ -235,7 +235,7 @@ struct LoginSheet: View {
                     dismiss()
                     Task { await model.reloadAccount() }
                 }
-                .buttonStyle(.glassProminent)
+                .primaryButton()
                 .keyboardShortcut(.defaultAction)
             }
         }

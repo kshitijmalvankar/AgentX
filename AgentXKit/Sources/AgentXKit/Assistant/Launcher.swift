@@ -191,16 +191,19 @@ struct LauncherView: View {
                     Text("esc to close").font(.caption).foregroundStyle(.tertiary)
                     Button("Open in AgentX", systemImage: "arrow.up.forward.app") { launcher.openInApp() }
                 }
-                .buttonStyle(.borderless)
+                .secondaryButton()
+                .controlSize(.small)
                 .padding(12)
             } else {
                 Divider()
                 FlowSuggestions { suggestion in launcher.submit(suggestion) }
-                    .padding(14)
+                    .padding(16)
             }
         }
         .frame(width: 680)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        // The panel's shape is the container: cards and controls inside follow its corners.
+        .containerShape(.rect(cornerRadius: Radius.panel))
+        .glassEffect(.regular, in: .rect(cornerRadius: Radius.panel))
         .padding(20)
         .onChange(of: launcher.focusToken) { focused = true }
         .onAppear { focused = true }

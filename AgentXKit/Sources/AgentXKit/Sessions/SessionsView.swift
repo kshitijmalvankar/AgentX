@@ -20,7 +20,7 @@ struct SessionsView: View {
                         Text("Pick a session on the left, or start a new one.")
                     } actions: {
                         Button("New Session", systemImage: "plus") { model.showNewSession = true }
-                            .buttonStyle(.glassProminent)
+                            .primaryButton()
                     }
                 }
             }

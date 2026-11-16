@@ -56,7 +56,7 @@ struct DiffView: View {
             }
         }
         .textSelection(.enabled)
-        .clipShape(.rect(cornerRadius: 6))
+        .clipShape(.rect(cornerRadius: Radius.inset))
     }
 
     private func marker(_ kind: Row.Kind) -> String {

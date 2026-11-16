@@ -121,7 +121,7 @@ private struct DiagnosticsSettings: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .defaultScrollAnchor(.bottom)
-            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8))
+            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Radius.inset))
         }
         .padding()
     }

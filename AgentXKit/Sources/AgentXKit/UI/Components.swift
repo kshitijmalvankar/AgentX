@@ -26,7 +26,7 @@ struct GlassCard<Content: View, Accessory: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular, in: .agentCard)
     }
 }
 

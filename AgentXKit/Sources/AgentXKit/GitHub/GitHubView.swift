@@ -91,6 +91,7 @@ struct GitHubView: View {
             Button("Open on GitHub", systemImage: "arrow.up.forward.square") {
                 if let url = URL(string: "https://github.com/\(s.profile.login)") { NSWorkspace.shared.open(url) }
             }
+            .secondaryButton()
         }
     }
 
@@ -243,7 +244,7 @@ struct StatTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .agentCard)
     }
 }
 
@@ -268,7 +269,7 @@ struct GitHubSetupView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString("brew install gh", forType: .string)
                     }
-                    Button("Check Again") { store.refresh() }
+                    Button("Check Again") { store.refresh() }.secondaryButton()
                 }
             case .needsSignIn:
                 ContentUnavailableView {
@@ -276,7 +277,7 @@ struct GitHubSetupView: View {
                 } description: {
                     Text("The GitHub CLI isn't signed in. Sign in once in your browser; AgentX never sees your credentials.")
                 } actions: {
-                    Button("Sign In…") { showSignIn = true }.buttonStyle(.glassProminent)
+                    Button("Sign In…") { showSignIn = true }.primaryButton()
                 }
             case .failed(let message):
                 ContentUnavailableView {
@@ -284,7 +285,7 @@ struct GitHubSetupView: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    Button("Try Again") { store.refresh() }
+                    Button("Try Again") { store.refresh() }.secondaryButton()
                 }
             }
         }
@@ -306,7 +307,7 @@ private struct GitHubSignInSheet: View {
             if let terminal = model.terminals.session(for: Self.terminalID) {
                 TerminalView(session: terminal)
                     .frame(minHeight: 320)
-                    .clipShape(.rect(cornerRadius: 8))
+                    .clipShape(.rect(cornerRadius: Radius.inset))
             }
             HStack {
                 Spacer()
@@ -315,7 +316,7 @@ private struct GitHubSignInSheet: View {
                     dismiss()
                     model.github.refresh()
                 }
-                .buttonStyle(.glassProminent)
+                .primaryButton()
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -363,7 +364,7 @@ struct GitHubActivityCard: View {
                     HStack {
                         Text("Connect GitHub to see your contributions and repositories.").foregroundStyle(.secondary)
                         Spacer()
-                        Button("Set Up") { model.sidebar = .github }
+                        Button("Set Up") { model.sidebar = .github }.secondaryButton()
                     }
                 default:
                     ProgressView().frame(maxWidth: .infinity)

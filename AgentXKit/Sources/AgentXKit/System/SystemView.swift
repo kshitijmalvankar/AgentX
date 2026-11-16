@@ -45,7 +45,7 @@ struct SystemView: View {
                     .help("Thermal state reported by macOS")
             }
             Button("Ask Claude", systemImage: "sparkles") { model.askClaudeAboutSystem() }
-                .buttonStyle(.glassProminent)
+                .primaryButton()
                 .controlSize(.large)
                 .disabled(monitor.latest == nil)
                 .help("Starts a Claude Code session with this snapshot to explain what's using your Mac. It asks before running commands, and uses your plan.")
@@ -264,6 +264,7 @@ private struct ProcessesCard: View {
                 Button("Activity Monitor") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
                 }
+                .secondaryButton()
             }
         } content: {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {

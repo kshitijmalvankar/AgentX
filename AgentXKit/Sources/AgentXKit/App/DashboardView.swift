@@ -34,11 +34,11 @@ struct DashboardView: View {
             }
             Spacer()
             Button("New Chat", systemImage: "bubble.left.and.bubble.right") { model.startNewChat() }
-                .buttonStyle(.glass)
+                .secondaryButton()
                 .controlSize(.large)
                 .help("A regular Claude chat, synced with the Claude app on your phone")
             Button("New Session", systemImage: "plus") { model.showNewSession = true }
-                .buttonStyle(.glassProminent)
+                .primaryButton()
                 .controlSize(.large)
         }
     }
@@ -117,8 +117,8 @@ private struct AgentsCard: View {
                     Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
                     Text(approval.headline).lineLimit(1)
                     Spacer()
-                    Button("Deny") { model.sessions.answer(approval, .deny()) }
-                    Button("Allow") { model.sessions.answer(approval, .allow) }.buttonStyle(.glassProminent)
+                    Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton()
+                    Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton()
                 }
                 .font(.callout)
             }
@@ -155,7 +155,7 @@ private struct AccountCard: View {
                         Text(account.planLabel).font(.title2.bold())
                         if let email = account.email { Text(email).foregroundStyle(.secondary) }
                         if !account.isSignedIn {
-                            Button("Sign In…") { model.showLogin = true }.buttonStyle(.glassProminent)
+                            Button("Sign In…") { model.showLogin = true }.primaryButton()
                         }
                         if let usage = model.usage.usage {
                             UsageMeter(usage: usage)

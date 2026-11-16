@@ -91,7 +91,7 @@ struct Sparkline: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .background(.regularMaterial, in: .rect(cornerRadius: 6))
+        .background(.regularMaterial, in: .rect(cornerRadius: Radius.inset))
     }
 
     private var accessibilitySummary: String {

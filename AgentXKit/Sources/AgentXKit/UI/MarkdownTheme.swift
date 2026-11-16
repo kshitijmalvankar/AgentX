@@ -75,7 +75,7 @@ extension Theme {
                     .padding(12)
             }
             .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.inset))
             .markdownMargin(top: 2, bottom: 12)
         }
         .table { configuration in

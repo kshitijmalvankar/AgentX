@@ -66,13 +66,13 @@ struct MenuBarContent: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                         HStack {
-                            Button("Deny") { model.sessions.answer(approval, .deny()) }
+                            Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton()
                             Spacer()
-                            Button("Allow") { model.sessions.answer(approval, .allow) }.buttonStyle(.glassProminent)
+                            Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton()
                         }
                     }
                     .padding(10)
-                    .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .rect(cornerRadius: 12))
+                    .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .agentCard)
                 }
             }
 
@@ -96,19 +96,27 @@ struct MenuBarContent: View {
             }
 
             Divider()
-            HStack {
+            HStack(spacing: 8) {
                 Button("Ask…") { LauncherController.shared.show() }
+                    .primaryButton()
                     .help("Open the launcher (⌥Space by default)")
-                Button("Open AgentX") { openMain() }
                 Button("New Chat") { openMain(); model.startNewChat() }
+                    .secondaryButton()
                 Button("New Session") { openMain(); model.showNewSession = true }
+                    .secondaryButton()
+            }
+            .controlSize(.small)
+            HStack {
+                Button("Open AgentX") { openMain() }
+                    .buttonStyle(.link)
                 Spacer()
                 Button("Settings", systemImage: "gearshape") { NSApp.activate(); openSettings() }
                     .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
                 Button("Quit", systemImage: "power") { NSApp.terminate(nil) }
                     .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
             }
-            .buttonStyle(.borderless)
         }
         .padding(14)
         .frame(width: 380)

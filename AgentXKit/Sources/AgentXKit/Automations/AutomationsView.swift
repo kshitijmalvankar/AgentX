@@ -75,7 +75,7 @@ struct AutomationsView: View {
                     editing = Automation(name: "", prompt: "", kind: .assistant, folder: nil,
                                          schedule: .daily(hour: 9, minute: 0, weekdays: []), enabled: true)
                 }
-                .buttonStyle(.glassProminent)
+                .primaryButton()
             }
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "info.circle").foregroundStyle(.secondary)
@@ -98,7 +98,7 @@ struct AutomationsView: View {
                 }
             }
             .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 14))
+            .glassEffect(.regular, in: .agentCard)
         }
     }
 }
@@ -157,10 +157,11 @@ private struct AutomationCard: View {
                 Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
                     .labelStyle(.iconOnly)
             }
-            .buttonStyle(.borderless)
+            .secondaryButton()
+            .controlSize(.small)
         }
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .glassEffect(.regular, in: .agentCard)
         .confirmationDialog("Delete \"\(automation.name)\"?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { center.delete(automation.id) }
         } message: {
@@ -221,7 +222,8 @@ private struct RunRow: View {
             }
             if let sessionId = run.sessionId {
                 Button("Open") { model.openSession(sessionId) }
-                    .buttonStyle(.borderless)
+                    .secondaryButton()
+                    .controlSize(.small)
                     .help("Open the full conversation")
             }
         }
@@ -269,7 +271,7 @@ private struct AutomationEditor: View {
                         .frame(minHeight: 90)
                         .scrollContentBackground(.hidden)
                         .padding(6)
-                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Radius.field))
                 }
                 Picker("Runs as", selection: $draft.kind) {
                     Text("Assistant (Calendar, Files, Mail, …)").tag(Automation.Kind.assistant)
@@ -318,9 +320,9 @@ private struct AutomationEditor: View {
             .formStyle(.grouped)
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel", role: .cancel) { dismiss() }.secondaryButton().keyboardShortcut(.cancelAction)
                 Button("Save", action: save)
-                    .buttonStyle(.glassProminent)
+                    .primaryButton()
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty
                               || draft.prompt.trimmingCharacters(in: .whitespaces).isEmpty

@@ -43,7 +43,7 @@ struct ToolCallCard: View {
                 .font(.callout)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 8)
-                .background(hovering ? Color.secondary.opacity(0.08) : .clear, in: .rect(cornerRadius: 6))
+                .background(hovering ? Color.secondary.opacity(0.08) : .clear, in: .rect(cornerRadius: Radius.inset))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -130,7 +130,7 @@ struct OutputBlock: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxHeight: 260)
-        .background(.background.opacity(0.6), in: .rect(cornerRadius: 6))
+        .background(.background.opacity(0.6), in: .rect(cornerRadius: Radius.inset))
     }
 }
 
@@ -172,18 +172,20 @@ struct ApprovalCard: View {
                 Button(showDenyReason ? "Deny" : "Deny…", role: .destructive) {
                     if showDenyReason { answer(.deny(denyReason)) } else { showDenyReason = true }
                 }
+                .secondaryButton()
                 .keyboardShortcut(approval.defaultToNo ? .defaultAction : .cancelAction)
                 Spacer()
                 if approval.canAlwaysAllow {
                     Button("Always allow") { answer(.allowAlways) }
+                        .secondaryButton()
                         .help("Don't ask again for this kind of action in this project")
                 }
                 Button("Allow") { answer(.allow) }
-                    .buttonStyle(.glassProminent)
+                    .primaryButton()
                     .keyboardShortcut(approval.defaultToNo ? .init("y", modifiers: .command) : .defaultAction)
             }
         }
         .padding(12)
-        .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .agentCard)
     }
 }

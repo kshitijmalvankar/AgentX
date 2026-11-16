@@ -29,7 +29,7 @@ struct NewSessionSheet: View {
                         }
                     }
                     .labelsHidden()
-                    Button("Choose…", action: chooseFolder)
+                    Button("Choose…", action: chooseFolder).secondaryButton()
                 }
             }
 
@@ -40,7 +40,7 @@ struct NewSessionSheet: View {
                     .frame(minHeight: 120)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                    .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Radius.field))
             }
 
             HStack(spacing: 16) {
@@ -55,10 +55,10 @@ struct NewSessionSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Cancel", role: .cancel) { dismiss() }.secondaryButton()
                     .keyboardShortcut(.cancelAction)
                 Button("Start", action: start)
-                    .buttonStyle(.glassProminent)
+                    .primaryButton()
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(folder.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || starting)
             }
