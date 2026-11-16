@@ -23,6 +23,12 @@ struct JSONValueTests {
         #expect(JSONValue.string("plain").flattenedText == "plain")
     }
 
+    @Test func planLabelUsesClaudeCodeWording() {
+        #expect(AccountInfo(subscriptionType: "Claude Pro").planLabel == "Claude Pro")
+        #expect(AccountInfo(subscriptionType: "max").planLabel == "Claude Max")
+        #expect(AccountInfo().planLabel == "Not signed in")
+    }
+
     @Test func decodesTypedModels() throws {
         let v = try json(#"{"sessionId":"abc","summary":"Fix bug","lastModified":1763316000000,"cwd":"/Users/me/Projects/app","gitBranch":"main"}"#)
         let s = try v.decode(SessionSummary.self)

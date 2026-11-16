@@ -18,7 +18,10 @@ public struct AccountInfo: Codable, Sendable, Equatable {
     }
 
     public var planLabel: String {
-        if let s = subscriptionType, !s.isEmpty { return "Claude \(s.capitalized)" }
+        if let s = subscriptionType, !s.isEmpty {
+            // Claude Code reports e.g. "Claude Pro"; older versions said just "pro".
+            return s.lowercased().hasPrefix("claude") ? s : "Claude \(s.capitalized)"
+        }
         if let k = apiKeySource, k != "none" { return "API key" }
         if let p = apiProvider, p != "firstParty" { return p.capitalized }
         return "Not signed in"
