@@ -13,7 +13,7 @@ actor CalendarService {
             return
         case .notDetermined:
             let granted: Bool = try await withCheckedThrowingContinuation { cont in
-                let done: EKEventStoreRequestAccessCompletionHandler = { granted, error in
+                let done: @Sendable (Bool, (any Error)?) -> Void = { granted, error in
                     if let error { cont.resume(throwing: error) } else { cont.resume(returning: granted) }
                 }
                 if type == .event { store.requestFullAccessToEvents(completion: done) }

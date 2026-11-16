@@ -201,8 +201,8 @@ extension ClaudeWebController: WKUIDelegate {
     }
 
     /// Voice mode asks for the microphone; macOS shows its own permission prompt.
-    public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                        initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
+    public func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+                        initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
         guard Self.isClaude(origin.host) else { return .deny }
         return type == .microphone ? .prompt : .deny
     }
