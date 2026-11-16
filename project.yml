@@ -1,0 +1,49 @@
+# XcodeGen spec. Generate the Xcode project with:  xcodegen generate
+# (AgentX.xcodeproj is git-ignored; this file is the source of truth.)
+name: AgentX
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  AgentXKit:
+    path: AgentXKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+
+targets:
+  AgentX:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes: ["Info.plist", "AgentX.entitlements"]
+    dependencies:
+      - package: AgentXKit
+        product: AgentXKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.agentx.AgentX   # change to your own reverse-DNS id
+        PRODUCT_NAME: AgentX
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"          # ad-hoc for local runs; set your team in Xcode to sign
+        GENERATE_INFOPLIST_FILE: NO
+        # Point at our hand-written files (XcodeGen's `info:`/`entitlements:` keys would regenerate them).
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/AgentX.entitlements
+        # Dev builds run agent-core straight from the repo.
+        AGENTX_CORE_PATH: $(SRCROOT)/agent-core
+
+schemes:
+  AgentX:
+    build:
+      targets:
+        AgentX: all
+    run:
+      config: Debug
