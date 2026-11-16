@@ -115,16 +115,17 @@ public final class AppModel {
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }
-        await registerMacTools()
+        // These are independent: run them side by side.
+        sessions.startWatching()
+        async let tools: Void = registerMacTools()
+        async let list: Void = sessions.refresh()
+        async let acct: Void = reloadAccount()   // also brings the first usage reading
+        _ = await (tools, list, acct)
         usage.start()
         automations.start()
         let writer = WidgetSnapshotWriter(model: self)
         widgetWriter = writer
         writer.start()
-        sessions.startWatching()
-        async let list: Void = sessions.refresh()
-        async let acct: Void = reloadAccount()
-        _ = await (list, acct)
     }
 
     public func restartEngine() async {
@@ -154,7 +155,10 @@ public final class AppModel {
         isLoadingAccount = true
         defer { isLoadingAccount = false }
         do {
-            account = try await client.call("account.info", as: AccountSnapshot.self)
+            // One short-lived Claude Code process gives both the account and plan usage.
+            let snapshot = try await client.call("account.snapshot")
+            account = try snapshot.decode(AccountSnapshot.self)
+            usage.apply(snapshot["usage"] ?? .null)
             accountError = nil
         } catch {
             accountError = error.localizedDescription

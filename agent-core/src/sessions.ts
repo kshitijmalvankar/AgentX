@@ -167,6 +167,11 @@ class LiveSession {
     this.setState("running");
   }
 
+  /** Plan usage through this session's own process (no extra process needed). */
+  usage() {
+    return this.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+  }
+
   async interrupt(): Promise<void> {
     await this.q.interrupt();
   }
@@ -271,9 +276,25 @@ export function registerSessionHandlers(): void {
     }),
   );
 
-  handle("account.usage", () =>
-    withProbe((q) => q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })),
+  // Account and plan usage from one short-lived Claude Code process (startup).
+  handle("account.snapshot", () =>
+    withProbe(async (q) => {
+      const init = await q.initializationResult();
+      let usage: unknown = null;
+      try {
+        usage = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+      } catch (err) {
+        log("usage unavailable:", err instanceof Error ? err.message : String(err));
+      }
+      return { account: init.account, models: init.models, usage };
+    }),
   );
+
+  // Plan usage: ask a running session if there is one, otherwise start a short probe.
+  handle("account.usage", () => {
+    const running = [...live.values()].find((s) => s.state === "idle" || s.state === "running" || s.state === "waiting");
+    return running ? running.usage() : withProbe((q) => q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }));
+  });
 
   handle("sessions.list", async (p: { dir?: string; limit?: number; offset?: number }) => {
     const sessions = await listSessions({ dir: p.dir, limit: p.limit, offset: p.offset });

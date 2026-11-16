@@ -48,6 +48,7 @@ public final class AgentClient {
     @ObservationIgnored private var pending: [Int: CheckedContinuation<JSONValue, any Error>] = [:]
     @ObservationIgnored private var readyWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var readers: [Task<Void, Never>] = []
+    @ObservationIgnored private var startedAt: ContinuousClock.Instant?
 
     public init() {}
 
@@ -56,7 +57,8 @@ public final class AgentClient {
     public func start() async {
         guard process == nil else { return }
         status = .starting
-        let paths = await ToolLocator.resolve()
+        startedAt = .now
+        let paths = await ToolLocator.fast()
         self.paths = paths
 
         guard let node = paths.node else {
@@ -102,7 +104,7 @@ public final class AgentClient {
         self.sidecarPID = process.processIdentifier
 
         readers = [
-            readLines(from: outPipe.fileHandleForReading) { [weak self] line in self?.handleLine(line) },
+            readMessages(from: outPipe.fileHandleForReading),
             readLines(from: errPipe.fileHandleForReading) { [weak self] line in self?.appendLog(line) },
         ]
     }
@@ -180,8 +182,12 @@ public final class AgentClient {
 
     // MARK: Incoming
 
-    private func handleLine(_ line: Data) {
-        guard let msg = try? JSONDecoder().decode(JSONValue.self, from: line) else { return }
+    /// Messages parsed off the main thread, delivered here in order, a chunk at a time.
+    private func handleMessages(_ messages: [JSONValue]) {
+        for msg in messages { handleMessage(msg) }
+    }
+
+    private func handleMessage(_ msg: JSONValue) {
         let method = msg["method"]?.string
         let params = msg["params"] ?? .null
 
@@ -210,6 +216,7 @@ public final class AgentClient {
             if method == "core.ready" {
                 sdkVersion = params["sdkVersion"]?.string
                 status = .ready
+                if let startedAt { recentLog.append("[AgentX] engine ready in \(Int((ContinuousClock.now - startedAt) / .milliseconds(1))) ms") }
                 resumeReadyWaiters()
             }
             notificationHandler?(method, params)
@@ -223,6 +230,35 @@ public final class AgentClient {
         guard let text = String(data: line, encoding: .utf8) else { return }
         recentLog.append(text)
         if recentLog.count > 300 { recentLog.removeFirst(recentLog.count - 300) }
+    }
+
+    /// Read agent-core's stdout: split lines and parse JSON on a background
+    /// task, then hand each chunk's messages to the main actor in one hop.
+    private func readMessages(from handle: FileHandle) -> Task<Void, Never> {
+        let (chunks, continuation) = AsyncStream<Data>.makeStream()
+        handle.readabilityHandler = { h in
+            let data = h.availableData
+            if data.isEmpty {
+                h.readabilityHandler = nil
+                continuation.finish()
+            } else {
+                continuation.yield(data)
+            }
+        }
+        return Task.detached(priority: .userInitiated) { [weak self] in
+            var buffer = Data()
+            for await chunk in chunks {
+                buffer.append(chunk)
+                var batch: [JSONValue] = []
+                var start = buffer.startIndex
+                while let newline = buffer[start...].firstIndex(of: 0x0A) {
+                    if newline > start, let msg = try? JSONValue.parse(buffer[start..<newline]) { batch.append(msg) }
+                    start = buffer.index(after: newline)
+                }
+                buffer.removeSubrange(buffer.startIndex..<start)
+                if !batch.isEmpty { await self?.handleMessages(batch) }
+            }
+        }
     }
 
     /// Read a pipe line by line, delivering each line on the main actor in order.

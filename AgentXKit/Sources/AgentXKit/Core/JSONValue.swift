@@ -107,6 +107,28 @@ extension JSONValue: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, Ex
 }
 
 extension JSONValue {
+    /// Fast parse: Foundation's JSONSerialization, then a direct conversion.
+    /// Several times faster than the Codable path, which has to try each JSON
+    /// type in turn (and throw on every miss) for every value.
+    public static func parse(_ data: Data) throws -> JSONValue {
+        JSONValue(any: try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))
+    }
+
+    init(any value: Any) {
+        switch value {
+        case let s as String:
+            self = .string(s)
+        case let n as NSNumber:
+            self = CFGetTypeID(n) == CFBooleanGetTypeID() ? .bool(n.boolValue) : .number(n.doubleValue)
+        case let a as [Any]:
+            self = .array(a.map(JSONValue.init(any:)))
+        case let d as [String: Any]:
+            self = .object(d.mapValues(JSONValue.init(any:)))
+        default:
+            self = .null
+        }
+    }
+
     /// Convenience for optional strings in request params.
     public static func optional(_ s: String?) -> JSONValue { s.map(JSONValue.string) ?? .null }
 }

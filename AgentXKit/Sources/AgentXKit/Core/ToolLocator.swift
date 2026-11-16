@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where AgentX found the programs it depends on.
-public struct ToolPaths: Sendable, Equatable {
+public struct ToolPaths: Sendable, Equatable, Codable {
     /// Node.js, used to run the agent-core sidecar.
     public var node: String?
     /// The `claude` CLI, used by the Terminal tab.
@@ -39,6 +39,37 @@ public enum ToolLocator {
     /// Runs on a background thread: it may start a login shell.
     public static func resolve() async -> ToolPaths {
         await Task.detached(priority: .userInitiated) { resolveSync() }.value
+    }
+
+    private static let cacheKey = "cachedToolPaths"
+
+    /// The paths found last time, if those programs still exist. Starting a
+    /// login shell costs about half a second, so launches use this and
+    /// re-check in the background.
+    public static func cached() -> ToolPaths? {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let paths = try? JSONDecoder().decode(ToolPaths.self, from: data),
+              let node = paths.node, FileManager.default.isExecutableFile(atPath: node),
+              let core = paths.agentCore, FileManager.default.fileExists(atPath: "\(core)/src/index.ts"),
+              UserDefaults.standard.string(forKey: nodePathOverrideKey).map({ $0.isEmpty || $0 == node }) ?? true,
+              UserDefaults.standard.string(forKey: agentCorePathOverrideKey).map({ $0.isEmpty || $0 == core }) ?? true
+        else { return nil }
+        return paths
+    }
+
+    public static func remember(_ paths: ToolPaths) {
+        if let data = try? JSONEncoder().encode(paths) { UserDefaults.standard.set(data, forKey: cacheKey) }
+    }
+
+    /// Cached paths now (and a fresh lookup saved for next time), or a lookup if there's no cache.
+    public static func fast() async -> ToolPaths {
+        if let cached = cached() {
+            Task.detached(priority: .background) { remember(resolveSync()) }
+            return cached
+        }
+        let fresh = await resolve()
+        remember(fresh)
+        return fresh
     }
 
     private static func resolveSync() -> ToolPaths {

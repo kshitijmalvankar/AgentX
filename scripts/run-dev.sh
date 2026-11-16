@@ -2,13 +2,22 @@
 # Build AgentX (the app and its desktop widgets) with Xcode and launch it
 # from build/AgentX.app.
 #
-#   scripts/run-dev.sh            build + launch
+#   scripts/run-dev.sh            optimized (Release) build + launch
+#   scripts/run-dev.sh --debug    Debug build (for the debugger) + launch
 #   scripts/run-dev.sh --no-open  build only
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG=Release
+OPEN=1
+for arg in "$@"; do
+  case "$arg" in
+    --debug) CONFIG=Debug ;;
+    --no-open) OPEN=0 ;;
+  esac
+done
 APP="$ROOT/build/AgentX.app"
-BUILT="$ROOT/build/DerivedData/Build/Products/Debug/AgentX.app"
+BUILT="$ROOT/build/DerivedData/Build/Products/$CONFIG/AgentX.app"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
 
 # SwiftUI macros on the macOS 27 SDK need Xcode's toolchain, not just the CLT.
@@ -26,9 +35,9 @@ fi
 echo "==> Generating the Xcode project"
 (cd "$ROOT" && xcodegen generate --quiet)
 
-echo "==> Building AgentX and its widgets"
+echo "==> Building AgentX and its widgets ($CONFIG)"
 # -skipPackagePluginValidation: trust SwiftTerm's build plugin, as swift build does.
-xcodebuild -project "$ROOT/AgentX.xcodeproj" -scheme AgentX -configuration Debug \
+xcodebuild -project "$ROOT/AgentX.xcodeproj" -scheme AgentX -configuration "$CONFIG" \
   -derivedDataPath "$ROOT/build/DerivedData" -skipPackagePluginValidation -quiet build
 
 echo "==> Installing to $APP"
@@ -40,6 +49,6 @@ cp -R "$BUILT" "$APP"
 "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
 
 echo "==> Built $APP"
-if [ "${1:-}" != "--no-open" ]; then
+if [ "$OPEN" = 1 ]; then
   open "$APP"
 fi

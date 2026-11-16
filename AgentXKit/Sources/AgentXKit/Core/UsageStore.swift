@@ -77,14 +77,28 @@ public final class UsageStore {
         self.client = client
     }
 
+    /// Refresh every 10 minutes (the first reading comes with the account at startup).
     func start() {
         guard loop == nil else { return }
         loop = Task { [weak self] in
+            if self?.usage == nil { await self?.refresh() }
             while !Task.isCancelled {
-                await self?.refresh()
                 try? await Task.sleep(for: .seconds(600))
+                await self?.refresh()
             }
         }
+    }
+
+    /// Use a usage reading that came with something else (the startup snapshot).
+    func apply(_ json: JSONValue) {
+        guard !json.isNull else { return }
+        if let parsed = UsageParser.parse(json) {
+            usage = parsed
+            unavailableReason = nil
+        } else {
+            unavailableReason = "Plan usage isn't available for this login (API keys don't have plan limits)."
+        }
+        onUpdate?()
     }
 
     /// Refresh shortly (coalesces bursts, e.g. several replies in a row).
