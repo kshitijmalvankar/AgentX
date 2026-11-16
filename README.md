@@ -1,6 +1,6 @@
 # AgentX
 
-A native macOS command center for Claude: run and watch Claude Code sessions, approve what they do, and (coming soon) a Mac assistant, system dashboard and automations. Powered by the Claude Agent SDK, using the Claude Code login on this Mac.
+A native macOS command center for Claude. It has your regular Claude chats (synced with the Claude app on your phone), plus Claude Code sessions you can run, approve and continue from your phone. Still to come: a Mac assistant, a system dashboard and automations. Powered by the Claude Agent SDK, using the Claude Code login on this Mac.
 
 ## Run it
 
@@ -27,11 +27,22 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | Path | What |
 |---|---|
 | `AgentXKit/Sources/AgentXKit/App` | Scenes (window, menu bar, settings), dashboard, `AppModel` |
-| `AgentXKit/Sources/AgentXKit/Sessions` | Session list, conversation view, tool cards, approvals |
+| `AgentXKit/Sources/AgentXKit/Chats` | Chats section: claude.ai in a web view, chat-only |
+| `AgentXKit/Sources/AgentXKit/Sessions` | Session list, conversation view, tool cards, approvals, phone sync |
 | `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models |
 | `agent-core/src` | Sidecar: `sessions.ts` (query / resume / approvals), `rpc.ts` (wire format) |
 | `App/` | Thin Xcode app target, Info.plist, entitlements |
 | `project.yml` | XcodeGen spec (the `.xcodeproj` is generated, not committed) |
+
+### Chats
+
+Regular Claude chats have no public API, so the Chats section runs claude.ai itself. It's the same account and the same conversations as the Claude app on your phone: send a chat there and it's here (⌘R pulls it in right away). AgentX only hosts the page. It doesn't read or automate it. It keeps the section chat-only by hiding claude.ai's Code links, and it sends any Code page to Sessions.
+
+To sign in, enter your email in the email field. Google doesn't allow its sign-in button inside apps, but a Google account can sign in with its email address: Claude sends a code or link. If you get a link, use **More › Open a Sign-in Link…** to open it inside AgentX. You only need to sign in once.
+
+### Phone sync for Claude Code sessions
+
+**Continue on phone** runs the session in the Terminal tab with Claude Code's Remote Control (`claude --resume <id> --remote-control`). The session then appears in the Claude app on your phone under **Code**. Messages you send from your phone run on your Mac and show up in AgentX. The first time, answer Remote Control's one-time prompt in that terminal. Remote Control needs a Pro or higher plan, and it doesn't work with API keys.
 
 ### Sessions open in other apps
 
@@ -59,6 +70,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 
 - [x] M0: app shell, menu bar, settings, agent engine
 - [x] M1: all Claude Code sessions, live chat, approvals, diffs, terminal tab
+- [x] Chats (claude.ai, synced with your phone) and phone sync for sessions
 - [ ] M2: system dashboard
 - [ ] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
 - [ ] M4: automations
