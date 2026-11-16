@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Swift / Xcode
+.build/
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+.swiftpm/
+
+# Node sidecar
+agent-core/node_modules/
+agent-core/dist/
+
+# Local
+.env
+*.log
