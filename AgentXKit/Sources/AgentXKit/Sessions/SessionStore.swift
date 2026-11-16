@@ -17,6 +17,8 @@ public struct ApprovalRequest: Identifiable, Sendable {
     public let blockedPath: String?
     public let canAlwaysAllow: Bool
     public let defaultToNo: Bool
+    /// The automation this came from, if it's an unattended run.
+    public var automationName: String?
     public let receivedAt = Date()
 
     public var headline: String { title ?? "Claude wants to use \(toolName)" }
@@ -62,6 +64,12 @@ public final class SessionStore {
     @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored var onApprovalRequested: ((ApprovalRequest) -> Void)?
+    /// A Claude Code turn ended (`result` message): used to finish automation runs.
+    @ObservationIgnored var onTurnFinished: ((Conversation, JSONValue) -> Void)?
+    /// An unattended run's approval went unanswered and was denied.
+    @ObservationIgnored var onApprovalTimedOut: ((Conversation) -> Void)?
+    /// How long an unattended run waits for an approval before denying it.
+    @ObservationIgnored var unattendedApprovalTimeout: Duration = .seconds(600)
 
     init(client: AgentClient) {
         self.client = client
@@ -249,6 +257,23 @@ public final class SessionStore {
         return c
     }
 
+    /// Start an unattended automation run (assistant or coding).
+    func startAutomationRun(kind: ConversationKind, cwd: String, prompt: String, title: String,
+                            runID: UUID, instructions: String, allowedTools: [String]) async -> Conversation {
+        if kind == .assistant { AssistantWorkspace.prepare() }
+        let c = Conversation(id: "auto-\(UUID().uuidString)", kind: kind, sessionId: nil, cwd: cwd, title: title)
+        c.automationRunID = runID
+        c.extraInstructions = instructions
+        c.extraAllowedTools = allowedTools
+        c.historyLoaded = true
+        conversations[c.id] = c
+        await send(prompt, in: c)
+        return c
+    }
+
+    /// For tests and tools that build a conversation themselves.
+    func insert(_ c: Conversation) { conversations[c.id] = c }
+
     /// Start a new assistant conversation (Mac tools on).
     @discardableResult
     public func startAssistant(prompt: String) async -> Conversation {
@@ -292,7 +317,8 @@ public final class SessionStore {
                 c.liveState = .starting
                 let result = try await client.call("session.start", [
                     "kind": .string(c.kind.rawValue),
-                    "appendSystemPrompt": c.kind == .assistant ? .string(assistantInstructions) : .null,
+                    "appendSystemPrompt": systemPromptAddition(for: c),
+                    "allowedTools": c.extraAllowedTools.isEmpty ? .null : .array(c.extraAllowedTools.map(JSONValue.string)),
                     "cwd": .string(c.cwd),
                     "prompt": .string(text),
                     "resume": .optional(c.sessionId),
@@ -306,6 +332,11 @@ public final class SessionStore {
             c.liveState = c.liveHandle == nil ? nil : c.liveState
             c.error = error.localizedDescription
         }
+    }
+
+    private func systemPromptAddition(for c: Conversation) -> JSONValue {
+        let parts = [c.kind == .assistant ? assistantInstructions : nil, c.extraInstructions].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? .null : .string(parts.joined(separator: "\n\n"))
     }
 
     public func interrupt(_ c: Conversation) async {
@@ -349,7 +380,8 @@ public final class SessionStore {
         switch method {
         case "permission.request":
             let idString = id.string ?? id.prettyPrinted()
-            let request = ApprovalRequest(
+            let owner = conversation(forHandle: params["handle"]?.string ?? "")
+            var request = ApprovalRequest(
                 id: idString,
                 rpcID: id,
                 handle: params["handle"]?.string ?? "",
@@ -365,6 +397,17 @@ public final class SessionStore {
                 canAlwaysAllow: params["canAlwaysAllow"]?.bool ?? false,
                 defaultToNo: params["defaultToNo"]?.bool ?? false
             )
+            if let owner, owner.automationRunID != nil {
+                request.automationName = owner.title
+                // Nobody may be watching: deny it if it isn't answered in time.
+                let timeout = unattendedApprovalTimeout
+                Task { [weak self] in
+                    try? await Task.sleep(for: timeout)
+                    guard let self, self.approvals.contains(where: { $0.id == idString }) else { return }
+                    self.answer(approvalID: idString, .deny("No answer within \(Self.describe(timeout)); skipped while the user was away."))
+                    self.onApprovalTimedOut?(owner)
+                }
+            }
             return await withCheckedContinuation { cont in
                 approvalWaiters[idString] = cont
                 approvals.append(request)
@@ -373,6 +416,11 @@ public final class SessionStore {
         default:
             throw AgentError.remote("AgentX doesn't handle \(method) yet.")
         }
+    }
+
+    private static func describe(_ d: Duration) -> String {
+        let seconds = Int(d.components.seconds)
+        return seconds >= 60 ? "\(seconds / 60) minutes" : "\(seconds) seconds"
     }
 
     func handleNotification(_ method: String, params: JSONValue) {
@@ -393,7 +441,10 @@ public final class SessionStore {
             if message["type"]?.string == "rate_limit_event", let info = message["rate_limit_info"].flatMap(RateLimitInfo.init) {
                 latestRateLimit = info
             }
-            conversation(forHandle: handle)?.apply(message)
+            if let c = conversation(forHandle: handle) {
+                c.apply(message)
+                if message["type"]?.string == "result" { onTurnFinished?(c, message) }
+            }
 
         case "session.ended":
             if let c = conversation(forHandle: handle) {

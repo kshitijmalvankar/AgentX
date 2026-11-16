@@ -55,11 +55,26 @@ public final class Conversation: Identifiable {
     public var model: String?
     public var permissionMode: PermissionModeOption = .default
 
+    /// Set when this conversation is an unattended automation run.
+    public var automationRunID: UUID?
+    /// Extra system-prompt text for this conversation (automation runs).
+    var extraInstructions: String?
+    /// Extra Claude Code permission rules (automation runs).
+    var extraAllowedTools: [String] = []
+
     public var isLoadingHistory = false
     public var historyLoaded = false
     public var error: String?
 
     public var items: [TranscriptItem] { transcript.items }
+
+    /// Claude's latest reply text (an automation run's summary).
+    public var lastAssistantText: String? {
+        for item in items.reversed() {
+            if case .assistant(let text) = item.kind, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        }
+        return nil
+    }
     public var isLive: Bool { liveHandle != nil }
     public var isWorking: Bool { liveState == .running || liveState == .starting || liveState == .waiting }
     public var projectName: String { (cwd as NSString).lastPathComponent }

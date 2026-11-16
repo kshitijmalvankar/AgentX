@@ -56,6 +56,8 @@ public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         NSApp.activate()
         LauncherController.registerHotkey()
+        // Start the engine (and the automation scheduler) even if no window opens.
+        Task { await AppModel.shared.bootstrap() }
     }
 
     /// Keep running in the menu bar after the window closes.
@@ -91,9 +93,7 @@ struct RootView: View {
         case .github: GitHubView()
         case .assistant: AssistantView()
         case .system: SystemView()
-        case .automations:
-            ComingSoonView(item: .automations, milestone: "M4",
-                           blurb: "Scheduled agent jobs: a morning brief, a nightly repo check, tidying Downloads, all running on your plan.")
+        case .automations: AutomationsView()
         }
     }
 }

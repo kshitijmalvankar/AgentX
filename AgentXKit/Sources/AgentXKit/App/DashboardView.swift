@@ -17,7 +17,7 @@ struct DashboardView: View {
                     RecentSessionsCard()
                     VitalsCard()
                     upcoming("Today", symbol: "calendar", text: "Your agenda and reminders, from Calendar.", milestone: "M3")
-                    upcoming("Automations", symbol: "clock.arrow.2.circlepath", text: "Next scheduled runs and their results.", milestone: "M4")
+                    AutomationsCard()
                 }
                 GitHubActivityCard()
             }

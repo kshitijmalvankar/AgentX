@@ -65,6 +65,24 @@ Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), wit
 
 In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
 
+### Automations
+
+**Automations** are Claude tasks that run on a schedule: daily at a time, on chosen weekdays, or every few hours. Each one runs either as the Assistant (with the Mac tools) or as a coding session in a folder. Three starters come turned off:
+
+| Starter | When | What it does |
+|---|---|---|
+| Morning brief | Weekdays 8:00 | Today's calendar, reminders and unread mail |
+| Repo check | Daily 18:00 | Uses `repos_status` to list local repos with uncommitted or unpushed work |
+| Tidy Downloads | Sundays 10:00 | Proposes moves, and each one needs your OK |
+
+How runs behave:
+- The scheduler runs inside AgentX. It checks every 30 seconds and again after the Mac wakes. **Open AgentX at login** keeps it available.
+- A run missed in the last 12 hours happens once on wake. Older misses are recorded as skipped.
+- Unattended runs never approve risky steps. They send a notification with Allow and Deny buttons, and deny the step after 10 minutes without an answer.
+- Each run ends with a short summary, shown as a notification, on the dashboard and in the run history, with its full conversation one click away.
+- Runs stop after 20 minutes, and are skipped when your plan usage is at 90% or more.
+- Automations and run history are stored in `~/Library/Application Support/AgentX/`.
+
 ### GitHub
 
 The **GitHub** section and a dashboard card show your contribution calendar (the green squares), streaks, and every repository: language, stars, open issues and PRs, last push, and, for repos cloned on this Mac, uncommitted changes and unpushed commits. AgentX reads GitHub through the GitHub CLI (`gh`) you're already signed in to, so it never sees or stores a token. Local status comes from `git` in your project folders (`~/Projects`, `~/Developer`, … and folders you've used with Claude Code). Double-click a repo to open it on GitHub. Right-click it for Show in Finder, New Session Here or Copy URL. Data refreshes when shown, at most every 10 minutes, or with the refresh button.
@@ -103,5 +121,5 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] GitHub: contribution calendar, repos, and local clone status
 - [x] M2: system dashboard (CPU, memory, disk, battery, network, top processes, Ask Claude)
 - [x] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
-- [ ] M4: automations
+- [x] M4: automations (scheduled Claude tasks with notifications)
 - [ ] M5: plan-usage meter, widgets

@@ -46,6 +46,8 @@ public final class AppModel {
     public let system = SystemMonitor()
     /// Your GitHub profile, contributions and repos (through the gh CLI).
     public let github = GitHubStore()
+    /// Scheduled Claude tasks.
+    public let automations = AutomationCenter()
     /// Folder to preselect the next time the New Session sheet opens.
     public var pendingNewSessionFolder: String?
 
@@ -82,6 +84,10 @@ public final class AppModel {
         }
         sessions.assistantInstructions = AssistantWorkspace.instructions(machine: system.machine)
         github.context = { [weak self] in (self?.client.paths?.shellPath, self?.sessions.recentProjects ?? []) }
+        automations.sessions = sessions
+        automations.planUsage = { [weak self] in self?.sessions.latestRateLimit?.utilization }
+        sessions.onTurnFinished = { [weak self] c, result in self?.automations.turnFinished(c, result: result) }
+        sessions.onApprovalTimedOut = { [weak self] c in self?.automations.approvalUnanswered(c) }
         sessions.onApprovalRequested = { request in
             NotificationManager.shared.postApproval(request)
         }
@@ -97,6 +103,7 @@ public final class AppModel {
         await client.waitUntilReady()
         guard client.status == .ready else { return }
         await registerMacTools()
+        automations.start()
         sessions.startWatching()
         async let list: Void = sessions.refresh()
         async let acct: Void = reloadAccount()
