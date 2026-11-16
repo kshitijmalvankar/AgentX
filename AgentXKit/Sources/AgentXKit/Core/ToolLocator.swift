@@ -18,6 +18,24 @@ public enum ToolLocator {
     public static let nodePathOverrideKey = "nodePathOverride"
     public static let agentCorePathOverrideKey = "agentCorePathOverride"
 
+    /// Variables child processes (agent-core, Claude Code, the Terminal tab)
+    /// may inherit from AgentX. Everything else is dropped: if AgentX itself
+    /// was started from inside another Claude Code session, its environment
+    /// carries that session's id, API proxy and sockets, and passing those on
+    /// would make Claude Code borrow the other app's login and identity.
+    static let inheritedVariables: Set<String> = [
+        "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE",
+        "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING",
+    ]
+
+    /// A clean environment for child processes. Callers set PATH (usually
+    /// `ToolPaths.shellPath`) and anything else they need explicitly.
+    public static func baseEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment.filter { inheritedVariables.contains($0.key) }
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        return env
+    }
+
     /// Runs on a background thread: it may start a login shell.
     public static func resolve() async -> ToolPaths {
         await Task.detached(priority: .userInitiated) { resolveSync() }.value
@@ -85,6 +103,7 @@ public enum ToolLocator {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
         process.arguments = ["-l", "-i", "-c", script]
+        process.environment = baseEnvironment()
         let out = Pipe()
         process.standardOutput = out
         process.standardError = FileHandle.nullDevice

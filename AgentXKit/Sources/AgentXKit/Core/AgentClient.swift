@@ -36,6 +36,8 @@ public final class AgentClient {
     public private(set) var paths: ToolPaths?
     /// Last lines the sidecar wrote to stderr, shown in Settings > Diagnostics.
     public private(set) var recentLog: [String] = []
+    /// Process id of agent-core; Claude Code processes it starts are its children.
+    public private(set) var sidecarPID: Int32?
 
     @ObservationIgnored public var notificationHandler: ((String, JSONValue) -> Void)?
     @ObservationIgnored public var requestHandler: ((String, JSONValue, JSONValue) async throws -> JSONValue)?
@@ -74,7 +76,7 @@ public final class AgentClient {
         process.executableURL = URL(fileURLWithPath: node)
         process.arguments = ["\(core)/src/index.ts"]
         process.currentDirectoryURL = URL(fileURLWithPath: core)
-        var env = ProcessInfo.processInfo.environment
+        var env = ToolLocator.baseEnvironment()
         env["PATH"] = paths.shellPath
         env["AGENTX"] = "1"
         process.environment = env
@@ -97,6 +99,7 @@ public final class AgentClient {
         }
         self.process = process
         self.stdin = inPipe.fileHandleForWriting
+        self.sidecarPID = process.processIdentifier
 
         readers = [
             readLines(from: outPipe.fileHandleForReading) { [weak self] line in self?.handleLine(line) },
@@ -125,6 +128,7 @@ public final class AgentClient {
     private func didTerminate(code: Int32) {
         process = nil
         stdin = nil
+        sidecarPID = nil
         readers.forEach { $0.cancel() }
         readers = []
         let reason = "agent-core exited (code \(code))."
