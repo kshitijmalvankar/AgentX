@@ -81,6 +81,7 @@ struct RootView: View {
             detail
                 .overlay(alignment: .top) { EngineBanner() }
         }
+        .onOpenURL { model.handle($0) }
         .sheet(isPresented: $model.showNewSession) { NewSessionSheet().environment(model) }
         .sheet(isPresented: $model.showLogin) { LoginSheet().environment(model) }
     }

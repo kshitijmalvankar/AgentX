@@ -63,6 +63,8 @@ public final class AppModel {
     public var showLogin = false
 
     @ObservationIgnored private var bootstrapped = false
+    /// Keeps the desktop widgets' data fresh.
+    @ObservationIgnored private var widgetWriter: WidgetSnapshotWriter?
     /// Opens the main window; set by a SwiftUI view that has `openWindow`.
     @ObservationIgnored var openMainWindow: (() -> Void)?
 
@@ -77,6 +79,7 @@ public final class AppModel {
         usage = UsageStore(client: client)
         client.notificationHandler = { [weak self] method, params in
             self?.sessions.handleNotification(method, params: params)
+            if method == "session.state" || method == "session.ended" { self?.widgetWriter?.setNeedsWrite() }
         }
         client.requestHandler = { [weak self] method, params, id in
             guard let self else { throw AgentError.notRunning("App is shutting down.") }
@@ -94,9 +97,13 @@ public final class AppModel {
             self?.usage.refreshSoon()
         }
         sessions.onApprovalTimedOut = { [weak self] c in self?.automations.approvalUnanswered(c) }
-        sessions.onApprovalRequested = { request in
+        sessions.onApprovalRequested = { [weak self] request in
             NotificationManager.shared.postApproval(request)
+            self?.widgetWriter?.setNeedsWrite()
         }
+        usage.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
+        github.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
+        automations.onChange = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
     }
 
     /// Start the agent engine and load everything. Safe to call more than once.
@@ -111,6 +118,9 @@ public final class AppModel {
         await registerMacTools()
         usage.start()
         automations.start()
+        let writer = WidgetSnapshotWriter(model: self)
+        widgetWriter = writer
+        writer.start()
         sessions.startWatching()
         async let list: Void = sessions.refresh()
         async let acct: Void = reloadAccount()
@@ -192,6 +202,12 @@ public final class AppModel {
     public func startNewChat() {
         sidebar = .chats
         ClaudeWebController.shared.startNewChat()
+    }
+
+    /// agentx://dashboard, agentx://system, agentx://github, … (from widgets).
+    public func handle(_ url: URL) {
+        guard url.scheme == "agentx", let host = url.host else { return }
+        if let item = SidebarItem(rawValue: host) { sidebar = item }
     }
 
     public func openSession(_ key: String) {

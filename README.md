@@ -8,15 +8,15 @@ A native macOS command center for Claude. It has your regular Claude chats (sync
 scripts/run-dev.sh
 ```
 
-That builds with SwiftPM, wraps the binary in `build/AgentX.app`, and opens it. Or use Xcode:
+That generates the Xcode project, builds AgentX and its desktop widgets with `xcodebuild`, installs the app at `build/AgentX.app`, and opens it. To work in Xcode instead:
 
 ```bash
 xcodegen generate && open AgentX.xcodeproj
 ```
 
-The first time, Xcode asks you to trust SwiftTerm's build plugin. Click **Trust & Enable**.
+The first time, Xcode asks you to trust SwiftTerm's build plugin. Click **Trust & Enable**. `swift build --package-path AgentXKit` still builds and tests all the app code quickly, but without the widgets.
 
-**Requirements:** macOS 26+, Xcode (its toolchain has the SwiftUI macros), Node 22.18+ and `npm install` in `agent-core/`. You also need a Claude Code login: in AgentX, use **Sign In…**, then type `/login`.
+**Requirements:** macOS 26+, Xcode, XcodeGen (`brew install xcodegen`), Node 22.18+, and `npm install` in `agent-core/`. You also need a Claude Code login: in AgentX, use **Sign In…**, then type `/login`.
 
 ## How it fits together
 
@@ -32,6 +32,8 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models |
 | `agent-core/src` | Sidecar: `sessions.ts` (query / resume / approvals), `rpc.ts` (wire format) |
 | `App/` | Thin Xcode app target, Info.plist, entitlements |
+| `Widgets/` | WidgetKit extension (Claude, Mac Vitals, GitHub Activity) |
+| `AgentXKit/Sources/AgentXShared` | The widget snapshot format, shared by the app and the widgets |
 | `project.yml` | XcodeGen spec (the `.xcodeproj` is generated, not committed) |
 
 ### Chats
@@ -64,6 +66,20 @@ The **Assistant** section and the **⌥Space launcher** talk to Claude with Mac 
 Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), with its parameters and a risk tier. AgentX sends the list to agent-core, which exposes it to Claude as an in-process MCP server (`mcp__agentx__*`) and hands each call back to the app. That way, macOS permission prompts name AgentX. Reading and creating run straight away and show up as cards in the chat. Sending, deleting, moving, quitting, running Shortcuts and reading the clipboard always ask first. **Settings › Assistant** lists every tool and its tier. AppleScript tools pass your text as arguments, never as script code.
 
 In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
+
+### Plan usage and widgets
+
+AgentX shows your Claude plan's usage (the 5-hour session window, the weekly limit, and when each resets) on the dashboard and in the menu bar. The numbers come from the Agent SDK's usage call, the same data as `/usage`. It refreshes every 10 minutes and shortly after each Claude reply. Automations skip their runs when usage reaches 90%.
+
+**Desktop widgets** (right-click the desktop, choose **Edit Widgets**, and search for AgentX):
+
+| Widget | Shows |
+|---|---|
+| Claude | Plan usage, what's running, and approvals waiting for you |
+| Mac Vitals | CPU, memory, disk and battery |
+| GitHub Activity | Your contribution calendar and streak |
+
+The widgets read a snapshot that AgentX writes to `~/Library/Application Support/AgentX/widget-snapshot.json` every 15 minutes and after important changes. The sandboxed extension can only read that folder. Clicking a widget opens the matching section (`agentx://dashboard`, `agentx://system`, `agentx://github`).
 
 ### Automations
 
@@ -122,4 +138,4 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M2: system dashboard (CPU, memory, disk, battery, network, top processes, Ask Claude)
 - [x] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
 - [x] M4: automations (scheduled Claude tasks with notifications)
-- [ ] M5: plan-usage meter, widgets
+- [x] M5: plan-usage meter, desktop widgets

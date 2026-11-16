@@ -26,6 +26,7 @@ targets:
     dependencies:
       - package: AgentXKit
         product: AgentXKit
+      - target: AgentXWidgets   # embedded in Contents/PlugIns
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.agentx.AgentX   # change to your own reverse-DNS id
@@ -39,6 +40,29 @@ targets:
         CODE_SIGN_ENTITLEMENTS: App/AgentX.entitlements
         # Dev builds run agent-core straight from the repo.
         AGENTX_CORE_PATH: $(SRCROOT)/agent-core
+
+  AgentXWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widgets
+        excludes: ["Info.plist", "AgentXWidgets.entitlements"]
+    dependencies:
+      - package: AgentXKit
+        product: AgentXShared
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.agentx.AgentX.Widgets
+        PRODUCT_NAME: AgentXWidgets
+        INFOPLIST_FILE: Widgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Widgets/AgentXWidgets.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        SKIP_INSTALL: YES
 
 schemes:
   AgentX:

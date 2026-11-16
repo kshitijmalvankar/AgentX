@@ -9,6 +9,8 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .library(name: "AgentXKit", targets: ["AgentXKit"]),
+        // Just the widget snapshot format, shared with the widget extension.
+        .library(name: "AgentXShared", targets: ["AgentXShared"]),
         .executable(name: "AgentXDev", targets: ["AgentXDev"]),
     ],
     dependencies: [
@@ -20,15 +22,17 @@ let package = Package(
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "3.1.0"),
     ],
     targets: [
+        .target(name: "AgentXShared"),
         .target(
             name: "AgentXKit",
             dependencies: [
+                "AgentXShared",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
             ]
         ),
         .executableTarget(name: "AgentXDev", dependencies: ["AgentXKit"]),
-        .testTarget(name: "AgentXKitTests", dependencies: ["AgentXKit"]),
+        .testTarget(name: "AgentXKitTests", dependencies: ["AgentXKit", "AgentXShared"]),
     ]
 )

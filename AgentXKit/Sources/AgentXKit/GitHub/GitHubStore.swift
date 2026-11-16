@@ -20,6 +20,8 @@ public final class GitHubStore {
     /// Supplies the login shell PATH and known project folders (set by AppModel).
     @ObservationIgnored var context: @MainActor () -> (shellPath: String?, projects: [String]) = { (nil, []) }
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    /// Called after each successful refresh (e.g. to update the widgets).
+    @ObservationIgnored var onUpdate: (() -> Void)?
 
     public init() {}
 
@@ -49,6 +51,7 @@ public final class GitHubStore {
             do {
                 snapshot = try await GitHubService.fetch(gh: gh, path: path)
                 state = .loaded
+                onUpdate?()
             } catch GitHubError.notSignedIn {
                 state = .needsSignIn
             } catch {

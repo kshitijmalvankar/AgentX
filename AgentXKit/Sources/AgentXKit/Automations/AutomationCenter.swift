@@ -25,6 +25,8 @@ public final class AutomationCenter {
     @ObservationIgnored private var wakeObserver: NSObjectProtocol?
     /// Automation id → its run in progress.
     @ObservationIgnored private var active: [UUID: (runID: UUID, timeout: Task<Void, Never>)] = [:]
+    /// Called after every save (e.g. to update the widgets).
+    @ObservationIgnored var onChange: (() -> Void)?
 
     public init(directory: URL = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent("Library/Application Support/AgentX")) {
@@ -68,6 +70,7 @@ public final class AutomationCenter {
             try encoder.encode(automations).write(to: automationsFile, options: .atomic)
             try encoder.encode(Array(runs.prefix(200))).write(to: runsFile, options: .atomic)
             storageError = nil
+            onChange?()
         } catch {
             storageError = "Couldn't save automations: \(error.localizedDescription)"
         }

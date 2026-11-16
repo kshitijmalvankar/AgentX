@@ -16,6 +16,18 @@
 	<string>AgentX</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- agentx://system etc. open a section (used by the widgets). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.agentx.AgentX</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>agentx</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
