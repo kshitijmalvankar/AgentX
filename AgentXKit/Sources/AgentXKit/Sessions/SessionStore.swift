@@ -51,6 +51,10 @@ public final class SessionStore {
     public private(set) var externalOwners: [String: [ExternalSession]] = [:]
     /// Selected row in the Sessions list (a conversation id or session id).
     public var selectedKey: String?
+    /// Selected conversation in the Assistant section.
+    public var assistantSelectedKey: String?
+    /// Extra instructions for assistant conversations (set by AppModel).
+    @ObservationIgnored var assistantInstructions = ""
 
     @ObservationIgnored private let client: AgentClient
     @ObservationIgnored private var approvalWaiters: [String: CheckedContinuation<JSONValue, Never>] = [:]
@@ -64,6 +68,28 @@ public final class SessionStore {
     }
 
     // MARK: Derived
+
+    /// Claude Code sessions in your projects (assistant conversations excluded).
+    public var codingSessions: [SessionSummary] { sessions.filter { $0.cwd != AssistantWorkspace.path } }
+
+    /// Past assistant conversations, newest first.
+    public var assistantSessions: [SessionSummary] { sessions.filter { $0.cwd == AssistantWorkspace.path } }
+
+    public var selectedAssistantConversation: Conversation? {
+        guard let key = assistantSelectedKey else { return nil }
+        return conversations[key] ?? conversation(forSessionId: key)
+    }
+
+    public func selectAssistant(_ key: String?) {
+        assistantSelectedKey = key
+        guard let key else { return }
+        if let existing = conversations[key] ?? conversation(forSessionId: key) {
+            reloadIfChangedElsewhere(existing)
+            return
+        }
+        guard let summary = sessions.first(where: { $0.sessionId == key }) else { return }
+        open(summary)
+    }
 
     public var liveConversations: [Conversation] {
         conversations.values.filter(\.isLive).sorted { $0.title < $1.title }
@@ -99,7 +125,7 @@ public final class SessionStore {
     /// Distinct project folders seen in history, most recent first.
     public var recentProjects: [String] {
         var seen = Set<String>()
-        return sessions.compactMap(\.cwd).filter { seen.insert($0).inserted }
+        return codingSessions.compactMap(\.cwd).filter { seen.insert($0).inserted }
     }
 
     func conversation(forSessionId id: String) -> Conversation? {
@@ -178,7 +204,8 @@ public final class SessionStore {
         if let existing = conversations[summary.sessionId] ?? conversation(forSessionId: summary.sessionId) {
             return existing
         }
-        let c = Conversation(id: summary.sessionId, sessionId: summary.sessionId, cwd: summary.cwd ?? NSHomeDirectory(), title: summary.title)
+        let kind: ConversationKind = summary.cwd == AssistantWorkspace.path ? .assistant : .coding
+        let c = Conversation(id: summary.sessionId, kind: kind, sessionId: summary.sessionId, cwd: summary.cwd ?? NSHomeDirectory(), title: summary.title)
         c.gitBranch = summary.gitBranch
         c.lastModified = summary.modifiedDate
         conversations[c.id] = c
@@ -209,7 +236,7 @@ public final class SessionStore {
         }
     }
 
-    /// Start a brand-new session in `cwd`.
+    /// Start a brand-new coding session in `cwd`.
     @discardableResult
     public func startNew(cwd: String, prompt: String, model: String?, mode: PermissionModeOption) async -> Conversation {
         let c = Conversation(id: "new-\(UUID().uuidString)", sessionId: nil, cwd: cwd, title: String(prompt.prefix(80)))
@@ -218,6 +245,19 @@ public final class SessionStore {
         c.historyLoaded = true
         conversations[c.id] = c
         selectedKey = c.id
+        await send(prompt, in: c)
+        return c
+    }
+
+    /// Start a new assistant conversation (Mac tools on).
+    @discardableResult
+    public func startAssistant(prompt: String) async -> Conversation {
+        AssistantWorkspace.prepare()
+        let c = Conversation(id: "new-\(UUID().uuidString)", kind: .assistant, sessionId: nil,
+                             cwd: AssistantWorkspace.path, title: String(prompt.prefix(80)))
+        c.historyLoaded = true
+        conversations[c.id] = c
+        assistantSelectedKey = c.id
         await send(prompt, in: c)
         return c
     }
@@ -251,6 +291,8 @@ public final class SessionStore {
             } else {
                 c.liveState = .starting
                 let result = try await client.call("session.start", [
+                    "kind": .string(c.kind.rawValue),
+                    "appendSystemPrompt": c.kind == .assistant ? .string(assistantInstructions) : .null,
                     "cwd": .string(c.cwd),
                     "prompt": .string(text),
                     "resume": .optional(c.sessionId),

@@ -1,6 +1,34 @@
 import Foundation
 import Observation
 
+/// Coding sessions live in a project folder; assistant conversations run in
+/// AgentX's own folder with the Mac tools.
+public enum ConversationKind: String, Sendable {
+    case coding, assistant
+}
+
+/// Where assistant conversations run (kept out of the coding Sessions list).
+public enum AssistantWorkspace {
+    public static let path: String = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/AgentX/Assistant").path
+
+    static func prepare() {
+        try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+    }
+
+    /// Extra instructions for the assistant, on top of Claude Code's own.
+    static func instructions(machine: MachineInfo) -> String {
+        """
+        You are the AgentX assistant, running on the user's Mac (\(machine.chip), \(machine.osVersion)). Their time zone is \(TimeZone.current.identifier).
+        - Use the agentx tools (mcp__agentx__*) for Calendar, Reminders, files, apps, Shortcuts, appearance and volume, the clipboard, Mail, Notes and Messages. Prefer them to shell commands.
+        - Pass dates to tools as local time in ISO 8601, like 2026-11-17T15:00.
+        - Some tools need the user's OK. AgentX shows them an approval card when you call one, so call the tool instead of asking for permission in text first.
+        - Only send email or messages when the user clearly asked you to send; otherwise make a draft.
+        - Keep replies short and conversational. They often appear in a small launcher window.
+        """
+    }
+}
+
 /// One conversation in the UI: an existing session's history, plus anything
 /// that happens live while AgentX drives it.
 @MainActor
@@ -8,6 +36,7 @@ import Observation
 public final class Conversation: Identifiable {
     /// Stable key: the session id for existing sessions, "new-<uuid>" for new ones.
     public let id: String
+    public let kind: ConversationKind
     public var sessionId: String?
     public var cwd: String
     public var title: String
@@ -35,8 +64,9 @@ public final class Conversation: Identifiable {
     public var isWorking: Bool { liveState == .running || liveState == .starting || liveState == .waiting }
     public var projectName: String { (cwd as NSString).lastPathComponent }
 
-    init(id: String, sessionId: String?, cwd: String, title: String) {
+    init(id: String, kind: ConversationKind = .coding, sessionId: String?, cwd: String, title: String) {
         self.id = id
+        self.kind = kind
         self.sessionId = sessionId
         self.cwd = cwd
         self.title = title

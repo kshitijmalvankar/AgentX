@@ -37,8 +37,8 @@ struct SessionListView: View {
 
     private var filtered: [SessionSummary] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return store.sessions }
-        return store.sessions.filter {
+        guard !q.isEmpty else { return store.codingSessions }
+        return store.codingSessions.filter {
             $0.title.lowercased().contains(q) || ($0.cwd ?? "").lowercased().contains(q) || ($0.gitBranch ?? "").lowercased().contains(q)
         }
     }
@@ -58,7 +58,7 @@ struct SessionListView: View {
     /// Live conversations that aren't in the on-disk list yet (brand-new sessions).
     private var newLive: [Conversation] {
         let known = Set(store.sessions.map(\.sessionId))
-        return store.liveConversations.filter { $0.sessionId.map { !known.contains($0) } ?? true }
+        return store.liveConversations.filter { $0.kind == .coding && ($0.sessionId.map { !known.contains($0) } ?? true) }
     }
 
     var body: some View {
@@ -90,7 +90,7 @@ struct SessionListView: View {
         .listStyle(.sidebar)
         .searchable(text: $search, placement: .sidebar, prompt: "Search sessions")
         .overlay {
-            if store.sessions.isEmpty {
+            if store.codingSessions.isEmpty {
                 if store.isRefreshing { ProgressView() }
                 else if let error = store.refreshError {
                     ContentUnavailableView("Couldn't load sessions", systemImage: "exclamationmark.triangle", description: Text(error))

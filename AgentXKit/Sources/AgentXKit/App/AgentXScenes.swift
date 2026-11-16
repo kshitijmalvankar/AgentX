@@ -55,6 +55,7 @@ public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
         // Needed when running the bare `AgentXDev` binary (no .app bundle).
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         NSApp.activate()
+        LauncherController.registerHotkey()
     }
 
     /// Keep running in the menu bar after the window closes.
@@ -87,9 +88,7 @@ struct RootView: View {
         case .dashboard: DashboardView()
         case .chats: ChatsView()
         case .sessions: SessionsView()
-        case .assistant:
-            ComingSoonView(item: .assistant, milestone: "M3",
-                           blurb: "Ask anything and let Claude act on your Mac: Calendar, Reminders, Files, Apps, Shortcuts, Mail, Notes and Messages. Summon it anywhere with ⌥Space.")
+        case .assistant: AssistantView()
         case .system: SystemView()
         case .automations:
             ComingSoonView(item: .automations, milestone: "M4",

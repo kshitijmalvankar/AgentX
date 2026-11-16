@@ -5,5 +5,12 @@
 	<!-- Not sandboxed: AgentX spawns Node/Claude Code and reads ~/.claude. -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<!-- Hardened runtime: resources the assistant and Chats use (macOS still asks the user). -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

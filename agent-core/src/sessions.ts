@@ -27,6 +27,7 @@ import {
   type McpServerConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.ts";
+import { autoAllowedTools, macToolsServer } from "./macTools.ts";
 import { handle, log, notify, request } from "./rpc.ts";
 
 /** Load the same settings Claude Code uses: ~/.claude, project .claude/, and local overrides. */
@@ -34,7 +35,12 @@ const ALL_SETTINGS = ["user", "project", "local"] as const;
 
 export type SessionState = "starting" | "running" | "waiting" | "idle" | "ended";
 
+/** Read-only built-ins the assistant may use without asking. */
+const ASSISTANT_READ_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
+
 type StartParams = {
+  /** "assistant" adds the Mac tools (mcp__agentx__*) and reads across your home folder. */
+  kind?: "coding" | "assistant";
   cwd: string;
   prompt?: string;
   resume?: string;
@@ -65,6 +71,7 @@ class LiveSession {
     this.params = params;
     this.sessionId = params.resume;
     this.baseline = params.resume ? this.rememberNewest(params.resume) : Promise.resolve();
+    const assistant = params.kind === "assistant";
     this.q = query({
       prompt: this.input,
       options: {
@@ -76,8 +83,9 @@ class LiveSession {
         systemPrompt: { type: "preset", preset: "claude_code", append: params.appendSystemPrompt },
         includePartialMessages: true,
         canUseTool: this.canUseTool,
-        mcpServers: params.mcpServers,
-        allowedTools: params.allowedTools,
+        mcpServers: assistant ? { ...params.mcpServers, agentx: macToolsServer(this.handle) } : params.mcpServers,
+        allowedTools: assistant ? [...(params.allowedTools ?? []), ...autoAllowedTools(), ...ASSISTANT_READ_TOOLS] : params.allowedTools,
+        additionalDirectories: assistant ? [homedir()] : undefined,
         abortController: this.abort,
         stderr: (data) => log(`[claude ${this.handle.slice(0, 8)}]`, data.trimEnd()),
       },

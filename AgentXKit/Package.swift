@@ -16,6 +16,8 @@ let package = Package(
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.99.3"),
         // Markdown rendering for Claude's replies.
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.1"),
+        // Global hotkey (⌥Space) for the launcher, with a recorder for Settings.
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "3.1.0"),
     ],
     targets: [
         .target(
@@ -23,6 +25,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+                .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
             ]
         ),
         .executableTarget(name: "AgentXDev", dependencies: ["AgentXKit"]),

@@ -3,6 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { handle, listen, log, notify } from "./rpc.ts";
+import { registerMacToolHandlers } from "./macTools.ts";
 import { closeAllSessions, registerSessionHandlers } from "./sessions.ts";
 
 // The SDK doesn't export its package.json, so read it from disk.
@@ -12,6 +13,7 @@ const VERSION = "0.1.0";
 
 handle("core.hello", () => ({ version: VERSION, sdkVersion, node: process.version, pid: process.pid }));
 registerSessionHandlers();
+registerMacToolHandlers();
 
 function shutdown(): void {
   closeAllSessions();

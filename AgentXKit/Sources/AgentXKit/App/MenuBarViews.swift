@@ -3,15 +3,21 @@ import SwiftUI
 /// Menu bar icon: changes when Claude is working or needs you.
 struct MenuBarLabel: View {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let approvals = model.sessions.approvals.count
         let working = model.sessions.liveConversations.contains { $0.liveState == .running }
-        if approvals > 0 {
-            Label("\(approvals)", systemImage: "hand.raised.fill")
-        } else {
-            Image(systemName: working ? "sparkles" : "sparkle")
+        Group {
+            if approvals > 0 {
+                Label("\(approvals)", systemImage: "hand.raised.fill")
+            } else {
+                Image(systemName: working ? "sparkles" : "sparkle")
+            }
         }
+        // The status item always exists, so it's where the launcher gets a
+        // way to reopen the main window after it was closed.
+        .onAppear { model.openMainWindow = { openWindow(id: "main") } }
     }
 }
 
@@ -92,6 +98,8 @@ struct MenuBarContent: View {
 
             Divider()
             HStack {
+                Button("Ask…") { LauncherController.shared.show() }
+                    .help("Open the launcher (⌥Space by default)")
                 Button("Open AgentX") { openMain() }
                 Button("New Chat") { openMain(); model.startNewChat() }
                 Button("New Session") { openMain(); model.showNewSession = true }

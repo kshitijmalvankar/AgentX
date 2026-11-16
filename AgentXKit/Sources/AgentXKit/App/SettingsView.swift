@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsView: View {
@@ -5,9 +6,10 @@ struct SettingsView: View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
             Tab("Account", systemImage: "person.crop.circle") { AccountSettings() }
+            Tab("Assistant", systemImage: "sparkles") { AssistantSettings() }
             Tab("Diagnostics", systemImage: "stethoscope") { DiagnosticsSettings() }
         }
-        .frame(width: 620, height: 440)
+        .frame(width: 660, height: 520)
     }
 }
 
@@ -18,6 +20,12 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
+            Section("Launcher") {
+                KeyboardShortcuts.Recorder("Open the launcher:", name: .toggleLauncher)
+                Text("Ask the assistant from anywhere, or type /code <project> <task> to start a coding session.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Agent engine") {
                 LabeledContent("Status", value: model.client.statusMessage)
                 LabeledContent("Agent SDK", value: model.client.sdkVersion ?? "—")
@@ -59,6 +67,41 @@ private struct AccountSettings: View {
                 Text("AgentX uses the Claude Code login on this Mac and never stores credentials itself. Builds shared with other people will need their own Anthropic API key for the native chat, per Anthropic's Agent SDK terms; the Terminal tab always works with their own Claude login.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// Every Mac tool the assistant has, and whether it asks first.
+private struct AssistantSettings: View {
+    private var areas: [(String, [MacTool])] {
+        var order: [String] = []
+        var byArea: [String: [MacTool]] = [:]
+        for tool in MacToolbox.tools {
+            if byArea[tool.area] == nil { order.append(tool.area) }
+            byArea[tool.area, default: []].append(tool)
+        }
+        return order.map { ($0, byArea[$0]!) }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Reading and creating things run on their own and appear as cards in the conversation. Sending, deleting, moving, quitting and running Shortcuts always ask you first. macOS also asks once before AgentX can use Calendar, Reminders, Mail, Notes, Messages or System Events.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(areas, id: \.0) { area, tools in
+                Section(area) {
+                    ForEach(tools) { tool in
+                        LabeledContent(tool.summary) {
+                            Label(tool.risk.label, systemImage: tool.risk == .ask ? "hand.raised" : tool.risk == .create ? "plus.circle" : "eye")
+                                .foregroundStyle(tool.risk == .ask ? .primary : .secondary)
+                        }
+                        .help(tool.description)
+                    }
+                }
             }
         }
         .formStyle(.grouped)

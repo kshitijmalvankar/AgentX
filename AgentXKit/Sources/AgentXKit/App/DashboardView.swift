@@ -187,7 +187,7 @@ private struct RecentSessionsCard: View {
         GlassCard("Recent sessions", symbol: "clock") {
             Button("All") { model.sidebar = .sessions }.buttonStyle(.link)
         } content: {
-            let recent = model.sessions.sessions.prefix(6)
+            let recent = model.sessions.codingSessions.prefix(6)
             if recent.isEmpty {
                 Text(model.sessions.isRefreshing ? "Loading…" : "No sessions yet.").foregroundStyle(.secondary)
             }

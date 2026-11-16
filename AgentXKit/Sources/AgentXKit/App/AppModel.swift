@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -52,6 +53,14 @@ public final class AppModel {
     public var showLogin = false
 
     @ObservationIgnored private var bootstrapped = false
+    /// Opens the main window; set by a SwiftUI view that has `openWindow`.
+    @ObservationIgnored var openMainWindow: (() -> Void)?
+
+    /// Bring up the main window (from the launcher or menu bar).
+    public func showMainWindow() {
+        openMainWindow?()
+        NSApp.activate()
+    }
 
     init() {
         sessions = SessionStore(client: client)
@@ -60,8 +69,12 @@ public final class AppModel {
         }
         client.requestHandler = { [weak self] method, params, id in
             guard let self else { throw AgentError.notRunning("App is shutting down.") }
+            if method == "tool.invoke" {
+                return await MacToolbox.invoke(name: params["name"]?.string ?? "", arguments: params["args"] ?? [:])
+            }
             return try await self.sessions.handleRequest(method, params: params, id: id)
         }
+        sessions.assistantInstructions = AssistantWorkspace.instructions(machine: system.machine)
         sessions.onApprovalRequested = { request in
             NotificationManager.shared.postApproval(request)
         }
@@ -72,9 +85,11 @@ public final class AppModel {
         guard !bootstrapped else { return }
         bootstrapped = true
         NotificationManager.shared.configure(store: sessions)
+        AssistantWorkspace.prepare()
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }
+        await registerMacTools()
         sessions.startWatching()
         async let list: Void = sessions.refresh()
         async let acct: Void = reloadAccount()
@@ -84,8 +99,24 @@ public final class AppModel {
     public func restartEngine() async {
         await client.restart()
         await client.waitUntilReady()
+        await registerMacTools()
         await sessions.refresh()
         await reloadAccount()
+    }
+
+    /// Tell agent-core which Mac tools exist (defined in Swift, run in Swift).
+    private func registerMacTools() async {
+        _ = try? await client.call("tools.register", ["tools": MacToolbox.definitions])
+    }
+
+    /// Ask the assistant something (Assistant section and launcher).
+    @discardableResult
+    public func askAssistant(_ prompt: String, in conversation: Conversation? = nil) async -> Conversation {
+        if let conversation {
+            await sessions.send(prompt, in: conversation)
+            return conversation
+        }
+        return await sessions.startAssistant(prompt: prompt)
     }
 
     public func reloadAccount() async {
@@ -143,7 +174,13 @@ public final class AppModel {
     }
 
     public func openSession(_ key: String) {
-        sidebar = .sessions
-        sessions.select(key)
+        let c = sessions.conversations[key] ?? sessions.conversations.values.first { $0.sessionId == key }
+        if c?.kind == .assistant || sessions.assistantSessions.contains(where: { $0.sessionId == key }) {
+            sidebar = .assistant
+            sessions.selectAssistant(key)
+        } else {
+            sidebar = .sessions
+            sessions.select(key)
+        }
     }
 }
