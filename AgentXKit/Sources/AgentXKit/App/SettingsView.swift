@@ -1,0 +1,85 @@
+import SwiftUI
+
+struct SettingsView: View {
+    var body: some View {
+        TabView {
+            Tab("General", systemImage: "gearshape") { GeneralSettings() }
+            Tab("Account", systemImage: "person.crop.circle") { AccountSettings() }
+            Tab("Diagnostics", systemImage: "stethoscope") { DiagnosticsSettings() }
+        }
+        .frame(width: 620, height: 440)
+    }
+}
+
+private struct GeneralSettings: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(ToolLocator.nodePathOverrideKey) private var nodeOverride = ""
+    @AppStorage(ToolLocator.agentCorePathOverrideKey) private var coreOverride = ""
+
+    var body: some View {
+        Form {
+            Section("Agent engine") {
+                LabeledContent("Status", value: model.client.statusMessage)
+                LabeledContent("Agent SDK", value: model.client.sdkVersion ?? "—")
+                Button("Restart Engine") { Task { await model.restartEngine() } }
+            }
+            Section("Programs") {
+                LabeledContent("Node.js", value: model.client.paths?.node?.abbreviatingHome ?? "Not found")
+                LabeledContent("agent-core", value: model.client.paths?.agentCore?.abbreviatingHome ?? "Not found")
+                LabeledContent("claude CLI", value: model.client.paths?.claude?.abbreviatingHome ?? "Not found")
+                TextField("Node.js path override", text: $nodeOverride, prompt: Text("Automatic"))
+                TextField("agent-core path override", text: $coreOverride, prompt: Text("Automatic"))
+                Text("Changes apply after Restart Engine.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct AccountSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Form {
+            Section("Claude Code login") {
+                if let a = model.account?.account {
+                    LabeledContent("Plan", value: a.planLabel)
+                    LabeledContent("Email", value: a.email ?? "—")
+                    LabeledContent("Organization", value: a.organization ?? "—")
+                    LabeledContent("Provider", value: a.apiProvider ?? "—")
+                } else {
+                    Text(model.accountError ?? "Loading…").foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Sign In / Switch Account…") { model.showLogin = true }
+                    Button("Reload") { Task { await model.reloadAccount() } }
+                }
+            }
+            Section {
+                Text("AgentX uses the Claude Code login on this Mac and never stores credentials itself. Builds shared with other people will need their own Anthropic API key for the native chat, per Anthropic's Agent SDK terms; the Terminal tab always works with their own Claude login.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct DiagnosticsSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("agent-core log").font(.headline)
+            ScrollView {
+                Text(model.client.recentLog.suffix(200).joined(separator: "\n"))
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .defaultScrollAnchor(.bottom)
+            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8))
+        }
+        .padding()
+    }
+}

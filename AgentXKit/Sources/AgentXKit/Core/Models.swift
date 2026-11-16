@@ -1,0 +1,116 @@
+import Foundation
+
+/// Who is signed in to Claude Code on this Mac (from the SDK's `accountInfo`).
+public struct AccountInfo: Codable, Sendable, Equatable {
+    public var email: String?
+    public var organization: String?
+    public var subscriptionType: String?
+    public var tokenSource: String?
+    public var apiKeySource: String?
+    public var apiProvider: String?
+
+    /// True when Claude Code has a usable login (subscription or API key).
+    public var isSignedIn: Bool {
+        if let s = subscriptionType, !s.isEmpty { return true }
+        if let k = apiKeySource, k != "none" { return true }
+        if let t = tokenSource, t != "none" { return true }
+        return apiProvider != nil && apiProvider != "firstParty"
+    }
+
+    public var planLabel: String {
+        if let s = subscriptionType, !s.isEmpty { return "Claude \(s.capitalized)" }
+        if let k = apiKeySource, k != "none" { return "API key" }
+        if let p = apiProvider, p != "firstParty" { return p.capitalized }
+        return "Not signed in"
+    }
+}
+
+public struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
+    public var value: String
+    public var displayName: String
+    public var description: String?
+    public var id: String { value }
+}
+
+public struct AccountSnapshot: Codable, Sendable, Equatable {
+    public var account: AccountInfo
+    public var models: [ModelInfo]
+}
+
+/// One Claude Code session on disk (from the SDK's `listSessions`).
+public struct SessionSummary: Codable, Sendable, Identifiable, Hashable {
+    public var sessionId: String
+    public var summary: String
+    public var lastModified: Double
+    public var fileSize: Double?
+    public var customTitle: String?
+    public var firstPrompt: String?
+    public var gitBranch: String?
+    public var cwd: String?
+    public var tag: String?
+    public var createdAt: Double?
+    public var archived: Bool?
+    /// Set when AgentX is currently running this session.
+    public var liveHandle: String?
+    public var liveState: String?
+
+    public var id: String { sessionId }
+    public var title: String { customTitle ?? summary }
+    public var modifiedDate: Date { Date(timeIntervalSince1970: lastModified / 1000) }
+    public var projectName: String { cwd.map { ($0 as NSString).lastPathComponent } ?? "Unknown project" }
+}
+
+/// Live state of a session AgentX is driving.
+public enum LiveState: String, Sendable {
+    case starting, running, waiting, idle, ended
+
+    public var label: String {
+        switch self {
+        case .starting: "Starting"
+        case .running: "Working"
+        case .waiting: "Needs approval"
+        case .idle: "Ready"
+        case .ended: "Stopped"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .starting: "hourglass"
+        case .running: "bolt.fill"
+        case .waiting: "hand.raised.fill"
+        case .idle: "checkmark.circle"
+        case .ended: "stop.circle"
+        }
+    }
+}
+
+/// Permission modes Claude Code supports (a subset we expose in the UI).
+public enum PermissionModeOption: String, CaseIterable, Identifiable, Sendable {
+    case `default`, acceptEdits, plan
+
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .default: "Ask before risky actions"
+        case .acceptEdits: "Auto-accept file edits"
+        case .plan: "Plan only (no changes)"
+        }
+    }
+}
+
+/// Plan usage reported by Claude Code (subscription users).
+public struct RateLimitInfo: Sendable, Equatable {
+    public var status: String
+    public var limitType: String?
+    public var utilization: Double?
+    public var resetsAt: Date?
+
+    init?(_ json: JSONValue) {
+        guard let status = json["status"]?.string else { return nil }
+        self.status = status
+        self.limitType = json["rateLimitType"]?.string
+        self.utilization = json["utilization"]?.number
+        self.resetsAt = json["resetsAt"]?.number.map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
+    }
+}
