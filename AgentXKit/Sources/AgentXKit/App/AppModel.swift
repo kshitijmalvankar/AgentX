@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case dashboard, chats, sessions, assistant, system, automations
+    case dashboard, chats, sessions, github, assistant, system, automations
 
     public var id: String { rawValue }
 
@@ -12,6 +12,7 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
         case .dashboard: "Dashboard"
         case .chats: "Chats"
         case .sessions: "Sessions"
+        case .github: "GitHub"
         case .assistant: "Assistant"
         case .system: "System"
         case .automations: "Automations"
@@ -23,6 +24,7 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
         case .dashboard: "square.grid.2x2"
         case .chats: "bubble.left.and.bubble.right"
         case .sessions: "terminal"
+        case .github: "chevron.left.forwardslash.chevron.right"
         case .assistant: "sparkles"
         case .system: "gauge.with.dots.needle.50percent"
         case .automations: "clock.arrow.2.circlepath"
@@ -42,6 +44,10 @@ public final class AppModel {
     public let terminals = TerminalStore()
     /// The Mac's vitals (sampled only while something shows them).
     public let system = SystemMonitor()
+    /// Your GitHub profile, contributions and repos (through the gh CLI).
+    public let github = GitHubStore()
+    /// Folder to preselect the next time the New Session sheet opens.
+    public var pendingNewSessionFolder: String?
 
     public var sidebar: SidebarItem? = .dashboard
     public private(set) var account: AccountSnapshot?
@@ -75,6 +81,7 @@ public final class AppModel {
             return try await self.sessions.handleRequest(method, params: params, id: id)
         }
         sessions.assistantInstructions = AssistantWorkspace.instructions(machine: system.machine)
+        github.context = { [weak self] in (self?.client.paths?.shellPath, self?.sessions.recentProjects ?? []) }
         sessions.onApprovalRequested = { request in
             NotificationManager.shared.postApproval(request)
         }

@@ -9,13 +9,14 @@ enum ProcessRunner {
         let stderr: String
     }
 
-    static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 30) async throws -> Output {
+    /// `path` overrides PATH for programs that launch others (e.g. gh calling git).
+    static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 30, path: String? = nil) async throws -> Output {
         try await Task.detached(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             var env = ToolLocator.baseEnvironment()
-            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+            env["PATH"] = path ?? "/usr/bin:/bin:/usr/sbin:/sbin"
             process.environment = env
             let out = Pipe(), err = Pipe()
             process.standardOutput = out

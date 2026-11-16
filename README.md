@@ -65,6 +65,10 @@ Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), wit
 
 In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
 
+### GitHub
+
+The **GitHub** section and a dashboard card show your contribution calendar (the green squares), streaks, and every repository: language, stars, open issues and PRs, last push, and, for repos cloned on this Mac, uncommitted changes and unpushed commits. AgentX reads GitHub through the GitHub CLI (`gh`) you're already signed in to, so it never sees or stores a token. Local status comes from `git` in your project folders (`~/Projects`, `~/Developer`, … and folders you've used with Claude Code). Double-click a repo to open it on GitHub. Right-click it for Show in Finder, New Session Here or Copy URL. Data refreshes when shown, at most every 10 minutes, or with the refresh button.
+
 ### System
 
 The System section reads the same kernel counters Activity Monitor uses: CPU ticks per core, VM statistics (memory used = app + wired + compressed), swap, memory pressure, IOKit battery data, interface byte counters and libproc per-process usage. It samples every 2 seconds, but only while the System section, the dashboard card or the menu bar is showing. **Ask Claude** starts a Claude Code session in your home folder with the current snapshot. Claude asks before running any command.
@@ -96,6 +100,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M0: app shell, menu bar, settings, agent engine
 - [x] M1: all Claude Code sessions, live chat, approvals, diffs, terminal tab
 - [x] Chats (claude.ai, synced with your phone) and phone sync for sessions
+- [x] GitHub: contribution calendar, repos, and local clone status
 - [x] M2: system dashboard (CPU, memory, disk, battery, network, top processes, Ask Claude)
 - [x] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
 - [ ] M4: automations

@@ -66,6 +66,10 @@ struct NewSessionSheet: View {
         .padding(24)
         .frame(width: 560)
         .onAppear {
+            if let preset = model.pendingNewSessionFolder {
+                folder = preset
+                model.pendingNewSessionFolder = nil
+            }
             if folder.isEmpty { folder = model.sessions.recentProjects.first ?? "" }
         }
     }

@@ -88,6 +88,7 @@ struct RootView: View {
         case .dashboard: DashboardView()
         case .chats: ChatsView()
         case .sessions: SessionsView()
+        case .github: GitHubView()
         case .assistant: AssistantView()
         case .system: SystemView()
         case .automations:
