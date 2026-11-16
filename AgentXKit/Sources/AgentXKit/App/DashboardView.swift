@@ -157,16 +157,9 @@ private struct AccountCard: View {
                         if !account.isSignedIn {
                             Button("Sign In…") { model.showLogin = true }.buttonStyle(.glassProminent)
                         }
-                        if let limit = model.sessions.latestRateLimit, let utilization = limit.utilization {
-                            Gauge(value: min(max(utilization, 0), 1)) {
-                                Text("Plan usage")
-                            } currentValueLabel: {
-                                Text("\(Int(utilization * 100))%")
-                            }
-                            .gaugeStyle(.linearCapacity)
-                            if let resets = limit.resetsAt {
-                                Text("Resets \(resets.relative)").font(.caption).foregroundStyle(.secondary)
-                            }
+                        if let usage = model.usage.usage {
+                            UsageMeter(usage: usage)
+                                .padding(.top, 4)
                         }
                         Text("Engine: Agent SDK \(model.client.sdkVersion ?? "?")").font(.caption).foregroundStyle(.tertiary)
                     }

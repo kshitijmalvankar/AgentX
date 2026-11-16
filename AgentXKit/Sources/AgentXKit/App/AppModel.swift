@@ -48,6 +48,8 @@ public final class AppModel {
     public let github = GitHubStore()
     /// Scheduled Claude tasks.
     public let automations = AutomationCenter()
+    /// Your Claude plan's usage (session and weekly limits).
+    public let usage: UsageStore
     /// Folder to preselect the next time the New Session sheet opens.
     public var pendingNewSessionFolder: String?
 
@@ -72,6 +74,7 @@ public final class AppModel {
 
     init() {
         sessions = SessionStore(client: client)
+        usage = UsageStore(client: client)
         client.notificationHandler = { [weak self] method, params in
             self?.sessions.handleNotification(method, params: params)
         }
@@ -85,8 +88,11 @@ public final class AppModel {
         sessions.assistantInstructions = AssistantWorkspace.instructions(machine: system.machine)
         github.context = { [weak self] in (self?.client.paths?.shellPath, self?.sessions.recentProjects ?? []) }
         automations.sessions = sessions
-        automations.planUsage = { [weak self] in self?.sessions.latestRateLimit?.utilization }
-        sessions.onTurnFinished = { [weak self] c, result in self?.automations.turnFinished(c, result: result) }
+        automations.planUsage = { [weak self] in self?.usage.usage?.highest }
+        sessions.onTurnFinished = { [weak self] c, result in
+            self?.automations.turnFinished(c, result: result)
+            self?.usage.refreshSoon()
+        }
         sessions.onApprovalTimedOut = { [weak self] c in self?.automations.approvalUnanswered(c) }
         sessions.onApprovalRequested = { request in
             NotificationManager.shared.postApproval(request)
@@ -103,6 +109,7 @@ public final class AppModel {
         await client.waitUntilReady()
         guard client.status == .ready else { return }
         await registerMacTools()
+        usage.start()
         automations.start()
         sessions.startWatching()
         async let list: Void = sessions.refresh()

@@ -51,9 +51,8 @@ struct MenuBarContent: View {
                 .foregroundStyle(.secondary)
             }
 
-            if let limit = model.sessions.latestRateLimit, let u = limit.utilization {
-                Gauge(value: min(max(u, 0), 1)) { Text("Plan usage \(Int(u * 100))%").font(.caption) }
-                    .gaugeStyle(.linearCapacity)
+            if let usage = model.usage.usage {
+                UsageMeter(usage: usage, compact: true)
             }
 
             let approvals = model.sessions.approvals
