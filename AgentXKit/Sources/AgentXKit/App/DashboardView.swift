@@ -15,7 +15,7 @@ struct DashboardView: View {
                     AgentsCard()
                     AccountCard()
                     RecentSessionsCard()
-                    upcoming("Mac vitals", symbol: "gauge.with.dots.needle.50percent", text: "CPU, memory, battery and network at a glance.", milestone: "M2")
+                    VitalsCard()
                     upcoming("Today", symbol: "calendar", text: "Your agenda and reminders, from Calendar.", milestone: "M3")
                     upcoming("Automations", symbol: "clock.arrow.2.circlepath", text: "Next scheduled runs and their results.", milestone: "M4")
                 }
@@ -57,6 +57,45 @@ struct DashboardView: View {
             Text(text).foregroundStyle(.secondary)
         }
         .frame(minHeight: 140)
+    }
+}
+
+/// CPU, memory, disk and battery at a glance; Details opens System.
+private struct VitalsCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GlassCard("Mac vitals", symbol: "gauge.with.dots.needle.50percent") {
+            Button("Details") { model.sidebar = .system }.buttonStyle(.link)
+        } content: {
+            if let s = model.system.latest {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    row("CPU", Format.percent(s.cpu), s.cpu)
+                    row("Memory", "\(Format.bytes(s.memory.used)) of \(Format.bytes(s.memory.total))", s.memory.usedFraction)
+                    row("Disk", "\(Format.bytes(s.disk.available)) free", s.disk.usedFraction)
+                    if let b = s.battery {
+                        row("Battery", Format.percent(b.level) + (b.isCharging ? ", charging" : ""), b.level)
+                    }
+                }
+                if s.memoryPressure != .normal {
+                    StatusLabel(level: s.memoryPressure.statusLevel, text: "\(s.memoryPressure.label) memory pressure")
+                }
+            } else {
+                Text("Reading your Mac's vitals…").foregroundStyle(.secondary)
+            }
+        }
+        .frame(minHeight: 140)
+        .onAppear { model.system.beginWatching() }
+        .onDisappear { model.system.endWatching() }
+    }
+
+    private func row(_ name: String, _ value: String, _ fraction: Double) -> some View {
+        GridRow {
+            Text(name).foregroundStyle(.secondary)
+            CapacityBar(fraction: fraction, height: 8).frame(width: 90)
+            Text(value).monospacedDigit()
+        }
+        .font(.callout)
     }
 }
 

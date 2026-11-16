@@ -90,9 +90,7 @@ struct RootView: View {
         case .assistant:
             ComingSoonView(item: .assistant, milestone: "M3",
                            blurb: "Ask anything and let Claude act on your Mac: Calendar, Reminders, Files, Apps, Shortcuts, Mail, Notes and Messages. Summon it anywhere with ⌥Space.")
-        case .system:
-            ComingSoonView(item: .system, milestone: "M2",
-                           blurb: "Live CPU, memory, disk, battery, network and top processes, with an “Ask Claude” button to explain what's going on.")
+        case .system: SystemView()
         case .automations:
             ComingSoonView(item: .automations, milestone: "M4",
                            blurb: "Scheduled agent jobs: a morning brief, a nightly repo check, tidying Downloads, all running on your plan.")

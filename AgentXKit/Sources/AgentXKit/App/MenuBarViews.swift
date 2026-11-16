@@ -31,6 +31,20 @@ struct MenuBarContent: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let s = model.system.latest {
+                HStack(spacing: 12) {
+                    Label(Format.percent(s.cpu), systemImage: "cpu")
+                    Label(Format.percent(s.memory.usedFraction), systemImage: "memorychip")
+                    if let b = s.battery {
+                        Label(Format.percent(b.level), systemImage: b.isCharging ? "battery.100percent.bolt" : "battery.75percent")
+                    }
+                    Spacer()
+                    Button("Details") { openMain(); model.sidebar = .system }.buttonStyle(.link)
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+
             if let limit = model.sessions.latestRateLimit, let u = limit.utilization {
                 Gauge(value: min(max(u, 0), 1)) { Text("Plan usage \(Int(u * 100))%").font(.caption) }
                     .gaugeStyle(.linearCapacity)
@@ -91,6 +105,8 @@ struct MenuBarContent: View {
         }
         .padding(14)
         .frame(width: 380)
+        .onAppear { model.system.beginWatching() }
+        .onDisappear { model.system.endWatching() }
     }
 
     private func openMain() {

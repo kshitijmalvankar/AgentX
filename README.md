@@ -44,6 +44,10 @@ To sign in, enter your email in the email field. Google doesn't allow its sign-i
 
 **Continue on phone** runs the session in the Terminal tab with Claude Code's Remote Control (`claude --resume <id> --remote-control`). The session then appears in the Claude app on your phone under **Code**. Messages you send from your phone run on your Mac and show up in AgentX. The first time, answer Remote Control's one-time prompt in that terminal. Remote Control needs a Pro or higher plan, and it doesn't work with API keys.
 
+### System
+
+The System section reads the same kernel counters Activity Monitor uses: CPU ticks per core, VM statistics (memory used = app + wired + compressed), swap, memory pressure, IOKit battery data, interface byte counters and libproc per-process usage. It samples every 2 seconds, but only while the System section, the dashboard card or the menu bar is showing. **Ask Claude** starts a Claude Code session in your home folder with the current snapshot. Claude asks before running any command.
+
 ### Sessions open in other apps
 
 AgentX continues a session in place, never as a fork, and always from its newest message, whichever app wrote it. Before it sends, it checks whether the session has moved on, for example because you kept going in Terminal or the Claude app. If it has, AgentX reloads and resumes from there.
@@ -71,7 +75,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M0: app shell, menu bar, settings, agent engine
 - [x] M1: all Claude Code sessions, live chat, approvals, diffs, terminal tab
 - [x] Chats (claude.ai, synced with your phone) and phone sync for sessions
-- [ ] M2: system dashboard
+- [x] M2: system dashboard (CPU, memory, disk, battery, network, top processes, Ask Claude)
 - [ ] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
 - [ ] M4: automations
 - [ ] M5: plan-usage meter, widgets

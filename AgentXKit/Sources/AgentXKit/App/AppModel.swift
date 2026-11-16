@@ -39,6 +39,8 @@ public final class AppModel {
     public let sessions: SessionStore
     /// Terminal tab processes (kept alive across tab and session switches).
     public let terminals = TerminalStore()
+    /// The Mac's vitals (sampled only while something shows them).
+    public let system = SystemMonitor()
 
     public var sidebar: SidebarItem? = .dashboard
     public private(set) var account: AccountSnapshot?
@@ -117,6 +119,21 @@ public final class AppModel {
         if remoteControl { args += ["--remote-control", String(c.title.prefix(50))] }
         terminals.start(id: c.id, executable: claude, arguments: args, directory: c.cwd,
                         environment: terminalEnvironment, remoteControl: remoteControl)
+    }
+
+    /// Start a Claude Code session in your home folder that explains the
+    /// current System snapshot. Claude asks before running any command.
+    public func askClaudeAboutSystem() {
+        guard let snapshot = system.latest else { return }
+        let prompt = """
+        Here's a snapshot of my Mac right now, from AgentX's System dashboard:
+
+        \(snapshot.report(machine: system.machine))
+
+        What's using the most resources, and does anything look wrong or worth fixing? You can run read-only commands (ps, top -l 1, vm_stat, df -h, pmset -g batt) to look closer. Don't quit apps, delete files or change settings without asking me first.
+        """
+        sidebar = .sessions
+        Task { await sessions.startNew(cwd: NSHomeDirectory(), prompt: prompt, model: nil, mode: .default) }
     }
 
     /// Show Chats and start a new conversation on claude.ai.
