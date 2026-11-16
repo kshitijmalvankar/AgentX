@@ -52,6 +52,7 @@ enum ToolPresentation {
         "notes_search": "Searched notes",
         "notes_create": "Created a note",
         "messages_send": "Sent a message",
+        "repos_status": "Checked your repositories",
     ]
 
     /// A tool call as a short sentence: what Claude did, and to what.
