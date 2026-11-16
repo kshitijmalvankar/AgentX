@@ -26,6 +26,8 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AgentX uses the microphone only when you use voice mode in Claude chats.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>AgentX, powered by Claude.</string>
 	<!-- Development: where the agent-core sidecar lives (the repo checkout). -->

@@ -32,6 +32,10 @@ struct DashboardView: View {
                 Text(Date.now.formatted(date: .complete, time: .omitted)).foregroundStyle(.secondary)
             }
             Spacer()
+            Button("New Chat", systemImage: "bubble.left.and.bubble.right") { model.startNewChat() }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .help("A regular Claude chat, synced with the Claude app on your phone")
             Button("New Session", systemImage: "plus") { model.showNewSession = true }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)

@@ -2,13 +2,14 @@ import Foundation
 import Observation
 
 public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case dashboard, sessions, assistant, system, automations
+    case dashboard, chats, sessions, assistant, system, automations
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
         case .dashboard: "Dashboard"
+        case .chats: "Chats"
         case .sessions: "Sessions"
         case .assistant: "Assistant"
         case .system: "System"
@@ -19,6 +20,7 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
     public var symbol: String {
         switch self {
         case .dashboard: "square.grid.2x2"
+        case .chats: "bubble.left.and.bubble.right"
         case .sessions: "terminal"
         case .assistant: "sparkles"
         case .system: "gauge.with.dots.needle.50percent"
@@ -115,6 +117,12 @@ public final class AppModel {
         if remoteControl { args += ["--remote-control", String(c.title.prefix(50))] }
         terminals.start(id: c.id, executable: claude, arguments: args, directory: c.cwd,
                         environment: terminalEnvironment, remoteControl: remoteControl)
+    }
+
+    /// Show Chats and start a new conversation on claude.ai.
+    public func startNewChat() {
+        sidebar = .chats
+        ClaudeWebController.shared.startNewChat()
     }
 
     public func openSession(_ key: String) {

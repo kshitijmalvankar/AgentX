@@ -85,6 +85,7 @@ struct RootView: View {
     @ViewBuilder private var detail: some View {
         switch model.sidebar ?? .dashboard {
         case .dashboard: DashboardView()
+        case .chats: ChatsView()
         case .sessions: SessionsView()
         case .assistant:
             ComingSoonView(item: .assistant, milestone: "M3",

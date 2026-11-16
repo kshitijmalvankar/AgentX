@@ -79,6 +79,7 @@ struct MenuBarContent: View {
             Divider()
             HStack {
                 Button("Open AgentX") { openMain() }
+                Button("New Chat") { openMain(); model.startNewChat() }
                 Button("New Session") { openMain(); model.showNewSession = true }
                 Spacer()
                 Button("Settings", systemImage: "gearshape") { NSApp.activate(); openSettings() }
@@ -89,7 +90,7 @@ struct MenuBarContent: View {
             .buttonStyle(.borderless)
         }
         .padding(14)
-        .frame(width: 340)
+        .frame(width: 380)
     }
 
     private func openMain() {
