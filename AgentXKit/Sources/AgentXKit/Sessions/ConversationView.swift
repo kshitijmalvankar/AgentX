@@ -19,15 +19,20 @@ struct ConversationView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            OpenElsewhereBanner(owners: store.externalOwners(of: conversation))
             switch tab {
             case .chat:
                 TranscriptView(conversation: conversation)
                 approvals
-                Composer(text: $draft, isWorking: conversation.isWorking,
-                         send: { text in Task { await store.send(text, in: conversation) } },
-                         stop: { Task { await store.interrupt(conversation) } })
+                if let terminal, terminal.isRunning {
+                    TerminalHostedNote(phoneSync: terminal.remoteControl) { tab = .terminal }
+                } else {
+                    Composer(text: $draft, isWorking: conversation.isWorking,
+                             send: { text in Task { await store.send(text, in: conversation) } },
+                             stop: { Task { await store.interrupt(conversation) } })
+                }
             case .terminal:
-                TerminalTab(conversation: conversation)
+                TerminalTab(conversation: conversation, startPhoneSync: startPhoneSync)
             }
         }
         .navigationTitle(conversation.title)
@@ -79,6 +84,14 @@ struct ConversationView: View {
             .fixedSize()
             .help(conversation.permissionMode.label)
 
+            Button {
+                if phoneSyncOn { tab = .terminal } else { startPhoneSync() }
+            } label: {
+                Label(phoneSyncOn ? "On your phone" : "Continue on phone", systemImage: phoneSyncOn ? "iphone.radiowaves.left.and.right" : "iphone")
+            }
+            .fixedSize()
+            .help(phoneSyncOn ? "Phone sync is on: open the Claude app on your phone, then Code." : "Run this session with Remote Control so you can keep going from the Claude app on your phone.")
+
             Picker("View", selection: $tab) {
                 ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -93,6 +106,22 @@ struct ConversationView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private var terminal: TerminalSession? { model.terminals.session(for: conversation.id) }
+    private var phoneSyncOn: Bool { terminal?.remoteControl == true && terminal?.isRunning == true }
+
+    /// Hand the session to the real Claude Code CLI with Remote Control on.
+    /// The chat process (if any) is ended first so only one process writes to it.
+    private func startPhoneSync() {
+        tab = .terminal
+        Task {
+            if conversation.isLive {
+                await store.stop(conversation)
+                for _ in 0..<40 where conversation.isLive { try? await Task.sleep(for: .milliseconds(100)) }
+            }
+            model.openTerminal(for: conversation, remoteControl: true)
+        }
     }
 
     private var modelLabel: String {
@@ -133,11 +162,6 @@ struct TranscriptView: View {
                             .foregroundStyle(.red)
                             .font(.callout)
                     }
-                    if staleWarning {
-                        Label("This session changed in the last few minutes. If it's still open in Terminal or another app, replying here runs a second Claude Code process on it.", systemImage: "exclamationmark.bubble")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
                     ForEach(conversation.items) { item in
                         TranscriptRow(item: item, cwd: conversation.cwd)
                     }
@@ -162,10 +186,33 @@ struct TranscriptView: View {
             .onChange(of: conversation.draftText.count / 200) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
+}
 
-    private var staleWarning: Bool {
-        guard !conversation.isLive, let modified = conversation.lastModified else { return false }
-        return Date().timeIntervalSince(modified) < 180
+/// Shown when another app (the Claude app, a terminal, ...) has this session open.
+private struct OpenElsewhereBanner: View {
+    let owners: [ExternalSession]
+
+    var body: some View {
+        if !owners.isEmpty {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "rectangle.on.rectangle").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Also open in \(names)").fontWeight(.medium)
+                    Text("Messages you send here continue this same session from its newest message, but that app won't show them until the session is reopened there. Use one app at a time: whichever sends last becomes the newest point.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.orange.opacity(0.08))
+        }
+    }
+
+    private var names: String {
+        let unique = Array(Set(owners.map(\.appName))).sorted()
+        return ListFormatter.localizedString(byJoining: unique)
     }
 }
 
@@ -282,44 +329,97 @@ struct Composer: View {
 
 // MARK: - Terminal tab
 
+/// Shown under the chat while the Terminal tab hosts this session.
+private struct TerminalHostedNote: View {
+    let phoneSync: Bool
+    let show: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: phoneSync ? "iphone.radiowaves.left.and.right" : "terminal")
+                .foregroundStyle(.secondary)
+            Text(phoneSync
+                 ? "Running in the Terminal tab with phone sync. Type there or in the Claude app on your phone; messages appear here as they're saved."
+                 : "Running in the Terminal tab. Type there; messages appear here as they're saved.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Show Terminal", action: show)
+        }
+        .padding(12)
+    }
+}
+
 private struct TerminalTab: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
-    @State private var exited: Int32??
-    @State private var runID = UUID()
+    let startPhoneSync: () -> Void
+
+    private var terminal: TerminalSession? { model.terminals.session(for: conversation.id) }
 
     var body: some View {
         if conversation.isLive {
             ContentUnavailableView {
                 Label("Session is running in Chat", systemImage: "bubble.left.and.text.bubble.right")
             } description: {
-                Text("Running it in the terminal at the same time would start a second Claude Code process on this session.")
+                Text("Opening it in the terminal at the same time would start a second Claude Code process on this session.")
             } actions: {
-                Button("End chat process and open terminal") { Task { await model.sessions.stop(conversation) } }
-            }
-        } else if let claude = model.client.paths?.claude {
-            VStack(spacing: 0) {
-                if let code = exited {
-                    HStack {
-                        Text("claude exited\(code.map { " (code \($0))" } ?? "").")
-                        Spacer()
-                        Button("Restart") { exited = nil; runID = UUID() }
+                Button("End chat process and open terminal") {
+                    Task {
+                        await model.sessions.stop(conversation)
+                        for _ in 0..<40 where conversation.isLive { try? await Task.sleep(for: .milliseconds(100)) }
+                        launch(remoteControl: false)
                     }
-                    .font(.caption)
-                    .padding(8)
                 }
-                TerminalView(
-                    executable: claude,
-                    arguments: conversation.sessionId.map { ["--resume", $0] } ?? [],
-                    directory: conversation.cwd,
-                    environment: model.terminalEnvironment,
-                    onExit: { code in exited = .some(code) }
-                )
-                .id(runID)
             }
-        } else {
+        } else if model.client.paths?.claude == nil {
             ContentUnavailableView("Claude Code CLI not found", systemImage: "terminal",
                                    description: Text("Install it with: curl -fsSL https://claude.ai/install.sh | bash"))
+        } else if let terminal {
+            VStack(spacing: 0) {
+                statusBar(terminal)
+                TerminalView(session: terminal)
+                    .id(ObjectIdentifier(terminal))
+            }
+        } else {
+            ContentUnavailableView {
+                Label("Open in Claude Code", systemImage: "terminal")
+            } description: {
+                Text("Runs the real claude CLI on this session, for slash commands and anything the chat view doesn't cover. With phone sync, you can also keep going from the Claude app on your phone.")
+            } actions: {
+                Button("Open Terminal") { launch(remoteControl: false) }
+                Button("Open with Phone Sync", systemImage: "iphone", action: startPhoneSync)
+                    .buttonStyle(.glassProminent)
+            }
         }
+    }
+
+    private func statusBar(_ terminal: TerminalSession) -> some View {
+        HStack(spacing: 8) {
+            if let code = terminal.exitCode {
+                Image(systemName: "stop.circle").foregroundStyle(.secondary)
+                Text("claude exited\(code.map { " (code \($0))" } ?? "").")
+                Spacer()
+                Button("Restart") { launch(remoteControl: terminal.remoteControl) }
+                Button("Close") { model.terminals.stop(conversation.id) }
+            } else if terminal.remoteControl {
+                Image(systemName: "iphone.radiowaves.left.and.right").foregroundStyle(.green)
+                Text("Phone sync on. On your phone, open the Claude app, then Code. The first time, answer Claude Code's Remote Control prompt below.")
+                Spacer()
+                Button("Stop") { model.terminals.stop(conversation.id) }
+            } else {
+                Image(systemName: "terminal").foregroundStyle(.secondary)
+                Text("Running claude in \(conversation.projectName).")
+                Spacer()
+                Button("Stop") { model.terminals.stop(conversation.id) }
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func launch(remoteControl: Bool) {
+        model.openTerminal(for: conversation, remoteControl: remoteControl)
     }
 }

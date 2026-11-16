@@ -51,6 +51,16 @@ public final class Conversation: Identifiable {
         historyLoaded = true
     }
 
+    /// Replace the transcript with the session's newest main line from disk.
+    func replaceHistory(_ messages: [JSONValue]) {
+        var builder = TranscriptBuilder()
+        for m in messages { builder.add(m) }
+        transcript = builder
+        draftText = ""
+        draftThinking = ""
+        historyLoaded = true
+    }
+
     func addLocalPrompt(_ text: String) {
         transcript.addLocalUserText(text)
     }

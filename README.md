@@ -33,6 +33,14 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `App/` | Thin Xcode app target, Info.plist, entitlements |
 | `project.yml` | XcodeGen spec (the `.xcodeproj` is generated, not committed) |
 
+### Sessions open in other apps
+
+AgentX continues a session in place, never as a fork, and always from its newest message, whichever app wrote it. Before it sends, it checks whether the session has moved on, for example because you kept going in Terminal or the Claude app. If it has, AgentX reloads and resumes from there.
+
+A banner shows when another app has the session open, using Claude Code's registry of running sessions in `~/.claude/sessions`. That app keeps its own copy of the conversation in memory, so it won't show messages sent from AgentX until you reopen the session there. Use one app at a time; whichever one sends last becomes the newest point.
+
+Every process AgentX starts (agent-core, Claude Code, the Terminal tab) gets a short allowlist of environment variables plus your login shell's PATH. Nothing inherited from whatever launched AgentX gets through, such as another Claude Code session's id, API proxy or sockets.
+
 ## Tests
 
 ```bash

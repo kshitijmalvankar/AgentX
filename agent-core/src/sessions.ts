@@ -6,6 +6,10 @@
 //   mode, so follow-up messages go to the same Claude Code process.
 // - Approvals: `canUseTool` asks the Swift app, which shows Allow / Deny /
 //   Always allow.
+// - One main line: resuming always continues the session itself (never a
+//   fork). If another app (Terminal, the Claude app) adds messages while
+//   AgentX's process is idle, `session.isStale` reports it so the app can
+//   restart from the newest message instead of writing a side branch.
 
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -34,7 +38,6 @@ type StartParams = {
   cwd: string;
   prompt?: string;
   resume?: string;
-  fork?: boolean;
   model?: string;
   permissionMode?: PermissionMode;
   /** Extra system-prompt text (used by the Mac assistant and automations). */
@@ -54,16 +57,19 @@ class LiveSession {
   private readonly abort = new AbortController();
   private readonly q: Query;
   readonly params: StartParams;
+  /** Message ids this process knows about: the newest one when it resumed, plus everything it produced. */
+  private readonly known = new Set<string>();
+  private readonly baseline: Promise<void>;
 
   constructor(params: StartParams) {
     this.params = params;
-    this.sessionId = params.fork ? undefined : params.resume;
+    this.sessionId = params.resume;
+    this.baseline = params.resume ? this.rememberNewest(params.resume) : Promise.resolve();
     this.q = query({
       prompt: this.input,
       options: {
         cwd: params.cwd,
         resume: params.resume,
-        forkSession: params.fork ?? false,
         model: params.model,
         permissionMode: params.permissionMode ?? "default",
         settingSources: [...ALL_SETTINGS],
@@ -98,6 +104,9 @@ class LiveSession {
   }
 
   private observe(message: SDKMessage): void {
+    if ((message.type === "assistant" || message.type === "user" || message.type === "system") && "uuid" in message && typeof message.uuid === "string") {
+      this.known.add(message.uuid);
+    }
     if (message.type === "system" && message.subtype === "init") {
       this.sessionId = message.session_id;
       notify("session.started", { handle: this.handle, sessionId: message.session_id, model: message.model, permissionMode: message.permissionMode });
@@ -110,6 +119,34 @@ class LiveSession {
     if (this.state === state) return;
     this.state = state;
     notify("session.state", { handle: this.handle, sessionId: this.sessionId, state });
+  }
+
+  private async newestMessageId(sessionId: string): Promise<string | undefined> {
+    const messages = await getSessionMessages(sessionId, { dir: this.params.cwd });
+    return messages.at(-1)?.uuid;
+  }
+
+  private async rememberNewest(sessionId: string): Promise<void> {
+    try {
+      const newest = await this.newestMessageId(sessionId);
+      if (newest) this.known.add(newest);
+    } catch {
+      // History unreadable: staleness checks will simply report "not stale".
+    }
+  }
+
+  /**
+   * True when the session's newest message came from somewhere else (another
+   * app continued it while this process sat idle). Only checked between turns.
+   */
+  async isStale(): Promise<boolean> {
+    if (!this.sessionId || this.state !== "idle") return false;
+    await this.baseline;
+    if (this.known.size === 0) return false;
+    const newest = await this.newestMessageId(this.sessionId);
+    const stale = !!newest && !this.known.has(newest);
+    if (stale) log(`session ${this.handle.slice(0, 8)}: newest message ${newest!.slice(0, 8)} came from another app`);
+    return stale;
   }
 
   send(text: string): void {
@@ -251,6 +288,7 @@ export function registerSessionHandlers(): void {
   });
 
   handle("session.send", (p: { handle: string; text: string }) => getLive(p.handle).send(p.text));
+  handle("session.isStale", async (p: { handle: string }) => ({ stale: await getLive(p.handle).isStale() }));
   handle("session.interrupt", (p: { handle: string }) => getLive(p.handle).interrupt());
   handle("session.setModel", (p: { handle: string; model?: string }) => getLive(p.handle).setModel(p.model));
   handle("session.setPermissionMode", (p: { handle: string; mode: PermissionMode }) => getLive(p.handle).setPermissionMode(p.mode));

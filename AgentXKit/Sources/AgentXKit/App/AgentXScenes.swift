@@ -61,6 +61,7 @@ public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        AppModel.shared.terminals.stopAll()
         AppModel.shared.client.stop()
     }
 }
@@ -109,6 +110,21 @@ private struct Sidebar: View {
                     Label(item.title, systemImage: item.symbol)
                         .badge(item == .sessions ? model.sessions.approvals.count : 0)
                         .tag(item)
+                }
+            }
+            let phoneSynced = model.terminals.remoteControlled
+            if !phoneSynced.isEmpty {
+                Section("On your phone") {
+                    ForEach(phoneSynced) { terminal in
+                        let c = model.sessions.conversations[terminal.id]
+                        Button {
+                            model.openSession(c?.sessionId ?? terminal.id)
+                        } label: {
+                            Label(c?.title ?? "Claude Code session", systemImage: "iphone.radiowaves.left.and.right")
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
             if !model.sessions.liveConversations.isEmpty {
@@ -205,16 +221,17 @@ struct LoginSheet: View {
             Text("Sign in to Claude Code").font(.title2.bold())
             Text("Type **/login** below and follow the browser prompt to sign in with your Claude account. AgentX never sees your password; Claude Code stores the login in your Keychain.")
                 .foregroundStyle(.secondary)
-            if let claude = model.client.paths?.claude {
-                TerminalView(executable: claude, arguments: [], directory: NSHomeDirectory(), environment: model.terminalEnvironment)
+            if let terminal = model.terminals.session(for: Self.terminalID) {
+                TerminalView(session: terminal)
                     .frame(minHeight: 360)
                     .clipShape(.rect(cornerRadius: 8))
-            } else {
+            } else if model.client.paths?.claude == nil {
                 Text("The Claude Code CLI wasn't found.").foregroundStyle(.red)
             }
             HStack {
                 Spacer()
                 Button("Done") {
+                    model.terminals.stop(Self.terminalID)
                     dismiss()
                     Task { await model.reloadAccount() }
                 }
@@ -224,5 +241,12 @@ struct LoginSheet: View {
         }
         .padding(20)
         .frame(width: 760, height: 560)
+        .onAppear {
+            guard let claude = model.client.paths?.claude else { return }
+            model.terminals.start(id: Self.terminalID, executable: claude, arguments: [], directory: NSHomeDirectory(),
+                                  environment: model.terminalEnvironment)
+        }
     }
+
+    private static let terminalID = "login"
 }

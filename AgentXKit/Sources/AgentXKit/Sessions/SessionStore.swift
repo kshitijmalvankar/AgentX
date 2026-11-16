@@ -47,12 +47,15 @@ public final class SessionStore {
     public private(set) var conversations: [String: Conversation] = [:]
     public private(set) var approvals: [ApprovalRequest] = []
     public private(set) var latestRateLimit: RateLimitInfo?
+    /// sessionId → Claude Code processes outside AgentX that have it open.
+    public private(set) var externalOwners: [String: [ExternalSession]] = [:]
     /// Selected row in the Sessions list (a conversation id or session id).
     public var selectedKey: String?
 
     @ObservationIgnored private let client: AgentClient
     @ObservationIgnored private var approvalWaiters: [String: CheckedContinuation<JSONValue, Never>] = [:]
     @ObservationIgnored private var watcher: DirectoryWatcher?
+    @ObservationIgnored private var registryWatcher: DirectoryWatcher?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored var onApprovalRequested: ((ApprovalRequest) -> Void)?
 
@@ -74,9 +77,18 @@ public final class SessionStore {
     /// Select a row; opens the session (and loads its history) if needed.
     public func select(_ key: String?) {
         selectedKey = key
-        guard let key, conversations[key] == nil, conversation(forSessionId: key) == nil,
-              let summary = sessions.first(where: { $0.sessionId == key }) else { return }
+        guard let key else { return }
+        if let existing = conversations[key] ?? conversation(forSessionId: key) {
+            reloadIfChangedElsewhere(existing)
+            return
+        }
+        guard let summary = sessions.first(where: { $0.sessionId == key }) else { return }
         open(summary)
+    }
+
+    /// Other apps that have this conversation's session open right now.
+    public func externalOwners(of conversation: Conversation) -> [ExternalSession] {
+        conversation.sessionId.flatMap { externalOwners[$0] } ?? []
     }
 
     public func approvals(for conversation: Conversation) -> [ApprovalRequest] {
@@ -109,6 +121,25 @@ public final class SessionStore {
         } catch {
             refreshError = error.localizedDescription
         }
+        refreshExternalOwners()
+        if let selected = selectedConversation { reloadIfChangedElsewhere(selected) }
+    }
+
+    func refreshExternalOwners() {
+        var ownParents: Set<Int32> = [getpid()]
+        if let sidecar = client.sidecarPID { ownParents.insert(sidecar) }
+        let owners = SessionRegistry.scan(ownParents: ownParents)
+        if owners != externalOwners { externalOwners = owners }
+    }
+
+    /// If an idle conversation's session file has been written since we
+    /// loaded it (Terminal, the Claude app, ...), show the newest version.
+    private func reloadIfChangedElsewhere(_ c: Conversation) {
+        guard !c.isLive, !c.isLoadingHistory, c.historyLoaded, let id = c.sessionId,
+              let summary = sessions.first(where: { $0.sessionId == id }) else { return }
+        guard let loaded = c.lastModified, summary.modifiedDate.timeIntervalSince(loaded) > 1 else { return }
+        c.lastModified = summary.modifiedDate
+        Task { await reloadHistory(c) }
     }
 
     /// Coalesce bursts of file changes into one refresh.
@@ -129,6 +160,14 @@ public final class SessionStore {
         }
         watcher.start()
         self.watcher = watcher
+
+        try? FileManager.default.createDirectory(at: SessionRegistry.directory, withIntermediateDirectories: true)
+        let registryWatcher = DirectoryWatcher(path: SessionRegistry.directory.path, latency: 1) { [weak self] in
+            Task { @MainActor in self?.refreshExternalOwners() }
+        }
+        registryWatcher.start()
+        self.registryWatcher = registryWatcher
+        refreshExternalOwners()
     }
 
     // MARK: Opening & starting
@@ -159,6 +198,17 @@ public final class SessionStore {
         }
     }
 
+    /// Replace the transcript with the session's newest main line on disk.
+    public func reloadHistory(_ c: Conversation) async {
+        guard let sessionId = c.sessionId else { return }
+        do {
+            let messages = try await client.call("sessions.messages", ["sessionId": .string(sessionId), "dir": .string(c.cwd)], as: [JSONValue].self)
+            c.replaceHistory(messages)
+        } catch {
+            c.error = "Couldn't reload history: \(error.localizedDescription)"
+        }
+    }
+
     /// Start a brand-new session in `cwd`.
     @discardableResult
     public func startNew(cwd: String, prompt: String, model: String?, mode: PermissionModeOption) async -> Conversation {
@@ -173,11 +223,27 @@ public final class SessionStore {
     }
 
     /// Send a message. Starts (or resumes) a live Claude Code process if needed.
+    ///
+    /// AgentX always continues the session itself, never a fork, and always
+    /// from its newest message, whichever app wrote it: an idle process that
+    /// fell behind (another app continued the session) is restarted first.
     public func send(_ text: String, in c: Conversation) async {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        c.addLocalPrompt(text)
         c.error = nil
+        if let handle = c.liveHandle, c.liveState == .idle {
+            let stale = (try? await client.call("session.isStale", ["handle": .string(handle)]))?["stale"]?.bool ?? false
+            if stale {
+                c.liveHandle = nil
+                c.liveState = nil
+                _ = try? await client.call("session.close", ["handle": .string(handle)])
+                await reloadHistory(c)
+                c.addNotice("Picked up newer messages from another app.")
+            }
+        } else if !c.isLive, c.sessionId != nil {
+            await reloadHistory(c)
+        }
+        c.addLocalPrompt(text)
         do {
             if let handle = c.liveHandle {
                 try await client.call("session.send", ["handle": .string(handle), "text": .string(text)])

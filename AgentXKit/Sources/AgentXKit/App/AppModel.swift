@@ -35,6 +35,8 @@ public final class AppModel {
 
     public let client = AgentClient()
     public let sessions: SessionStore
+    /// Terminal tab processes (kept alive across tab and session switches).
+    public let terminals = TerminalStore()
 
     public var sidebar: SidebarItem? = .dashboard
     public private(set) var account: AccountSnapshot?
@@ -97,12 +99,22 @@ public final class AppModel {
 
     /// Environment for processes we launch in the Terminal tab.
     public var terminalEnvironment: [String: String] {
-        var env = ProcessInfo.processInfo.environment
+        var env = ToolLocator.baseEnvironment()
         env["PATH"] = client.paths?.shellPath ?? env["PATH"]
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         return env
+    }
+
+    /// Run the real `claude` CLI on a conversation in its Terminal tab,
+    /// optionally with Remote Control so it continues from the Claude phone app.
+    public func openTerminal(for c: Conversation, remoteControl: Bool) {
+        guard let claude = client.paths?.claude else { return }
+        var args = c.sessionId.map { ["--resume", $0] } ?? []
+        if remoteControl { args += ["--remote-control", String(c.title.prefix(50))] }
+        terminals.start(id: c.id, executable: claude, arguments: args, directory: c.cwd,
+                        environment: terminalEnvironment, remoteControl: remoteControl)
     }
 
     public func openSession(_ key: String) {
