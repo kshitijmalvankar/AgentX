@@ -53,6 +53,10 @@ enum ToolPresentation {
         "notes_create": "Created a note",
         "messages_send": "Sent a message",
         "repos_status": "Checked your repositories",
+        "memory_save": "Remembered",
+        "memory_search": "Checked memory for",
+        "memory_read": "Read the memory",
+        "memory_forget": "Forgot",
     ]
 
     /// A tool call as a short sentence: what Claude did, and to what.

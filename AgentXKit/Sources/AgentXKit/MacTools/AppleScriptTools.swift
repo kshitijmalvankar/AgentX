@@ -161,7 +161,7 @@ enum AppleScriptTools {
 
 /// Every Mac tool, and the one place to run them.
 enum MacToolbox {
-    static let tools: [MacTool] = CalendarTools.all + SystemTools.all + AppleScriptTools.all + CodeTools.all
+    static let tools: [MacTool] = CalendarTools.all + SystemTools.all + AppleScriptTools.all + CodeTools.all + MemoryTools.all
 
     static func tool(named name: String) -> MacTool? { tools.first { $0.name == name } }
 

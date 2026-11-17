@@ -125,6 +125,14 @@ Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), wit
 
 In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
 
+### Memory
+
+Tell the assistant "remember that I prefer short replies" (or it notices something lasting) and it saves a note: one Markdown file per memory in `~/Library/Application Support/AgentX/Memory/`, plus a `MEMORY.md` index. Mac conversations, automations and messages from your iPhone get the notes in their instructions; coding sessions keep Claude Code's own CLAUDE.md memory.
+
+- **Settings → Memory**: search, read, edit, add and delete memories. New ones Claude saved are marked **New** until you've looked. **Use memory** off means Claude neither sees nor saves them.
+- Edit the files yourself if you like; AgentX picks up the changes. Deleting moves a file to `Memory/.trash`.
+- Claude won't save passwords, keys, card or ID numbers (they're refused), and in a conversation that has read web pages or email, saving a memory asks you first.
+
 ### iPhone companion
 
 The AgentX iPhone app watches and controls your Mac:

@@ -79,6 +79,8 @@ public final class AppModel {
     public let today = TodayAgenda()
     /// The encrypted link to the AgentX iPhone app (Settings → iPhone).
     public let phone: PhoneLink
+    /// What AgentX remembers about you (Settings → Memory).
+    public let memory = MemoryStore.shared
     /// Anthropic's signature on the Claude Code engine binary (nil while checking).
     public private(set) var engineSignature: CodeSignature.Status?
     /// Folder to preselect the next time the New Session sheet opens.
@@ -135,6 +137,7 @@ public final class AppModel {
             return try await self.sessions.handleRequest(method, params: params, id: id)
         }
         sessions.assistantInstructions = AssistantWorkspace.instructions(machine: system.machine)
+        sessions.memoryPrompt = { MemoryStore.shared.promptSection() }
         github.context = { [weak self] in (self?.client.paths?.shellPath, self?.sessions.recentProjects ?? []) }
         automations.sessions = sessions
         automations.planUsage = { [weak self] in self?.usage.usage?.highest }
@@ -170,6 +173,7 @@ public final class AppModel {
         bootstrapped = true
         NotificationManager.shared.configure(store: sessions)
         AssistantWorkspace.prepare()
+        memory.startWatching()
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }

@@ -7,12 +7,13 @@ struct SettingsView: View {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
             Tab("Account", systemImage: "person.crop.circle") { AccountSettings() }
             Tab("Assistant", systemImage: "sparkles") { AssistantSettings() }
+            Tab("Memory", systemImage: "brain") { MemorySettingsView() }
             Tab("iPhone", systemImage: "iphone") { PhoneSettingsView() }
             Tab("Security", systemImage: "lock.shield") { SecuritySettingsView() }
             Tab("Activity", systemImage: "list.bullet.rectangle") { ActivitySettingsView() }
             Tab("Diagnostics", systemImage: "stethoscope") { DiagnosticsSettings() }
         }
-        .frame(width: 700, height: 560)
+        .frame(width: 760, height: 580)
     }
 }
 

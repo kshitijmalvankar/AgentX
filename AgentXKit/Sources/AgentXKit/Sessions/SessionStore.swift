@@ -72,6 +72,8 @@ public final class SessionStore {
     public var assistantSelectedKey: String?
     /// Extra instructions for assistant conversations (set by AppModel).
     @ObservationIgnored var assistantInstructions = ""
+    /// AgentX's memory notes, added for assistant conversations when a process starts (nil: none or paused).
+    @ObservationIgnored var memoryPrompt: @MainActor () -> String? = { nil }
 
     @ObservationIgnored private let client: AgentClient
     @ObservationIgnored private var approvalWaiters: [String: CheckedContinuation<JSONValue, Never>] = [:]
@@ -409,7 +411,9 @@ public final class SessionStore {
     }
 
     private func systemPromptAddition(for c: Conversation) -> JSONValue {
-        let parts = [c.kind == .assistant ? assistantInstructions : nil, c.extraInstructions].compactMap { $0 }.filter { !$0.isEmpty }
+        let parts = [c.kind == .assistant ? assistantInstructions : nil,
+                     c.kind == .assistant ? memoryPrompt() : nil,
+                     c.extraInstructions].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? .null : .string(parts.joined(separator: "\n\n"))
     }
 
