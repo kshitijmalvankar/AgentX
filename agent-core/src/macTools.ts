@@ -5,6 +5,7 @@
 
 import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { frameUntrusted } from "./policy.ts";
 import { handle, request } from "./rpc.ts";
 
 export type ToolRisk = "read" | "create" | "ask";
@@ -17,7 +18,16 @@ export type ParamDef = {
   enum?: string[];
 };
 
-export type ToolDef = { name: string; description: string; risk: ToolRisk; parameters: ParamDef[] };
+export type ToolDef = {
+  name: string;
+  description: string;
+  risk: ToolRisk;
+  parameters: ParamDef[];
+  /** Results are untrusted content (e.g. "your email"): framed as data and they taint the session. */
+  untrusted?: string;
+  /** Only for sessions someone is watching (screen, selection, other apps' UI). */
+  attendedOnly?: boolean;
+};
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError: boolean };
 
@@ -53,30 +63,47 @@ export function zodShape(params: ParamDef[]): Record<string, z.ZodType> {
 export async function invokeInApp(name: string, args: Record<string, unknown>, sessionHandle?: string): Promise<ToolResult> {
   try {
     const result = await request<{ text: string; isError?: boolean }>("tool.invoke", { handle: sessionHandle, name, args });
-    return { content: [{ type: "text", text: result.text }], isError: result.isError ?? false };
+    const source = definitions.find((d) => d.name === name)?.untrusted;
+    const text = source && !result.isError ? frameUntrusted(source, result.text) : result.text;
+    return { content: [{ type: "text", text }], isError: result.isError ?? false };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { content: [{ type: "text", text: `AgentX couldn't run ${name}: ${message}` }], isError: true };
   }
 }
 
+/** The tools a session gets: unattended runs don't get the attended-only ones. */
+export function toolsFor(opts: { unattended?: boolean } = {}): ToolDef[] {
+  return definitions.filter((d) => !(opts.unattended && d.attendedOnly));
+}
+
 /** A fresh MCP server for one assistant session. */
-export function macToolsServer(sessionHandle: string): McpSdkServerConfigWithInstance {
+export function macToolsServer(sessionHandle: string, opts: { unattended?: boolean } = {}): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
     name: "agentx",
     version: "0.1.0",
     // Load the tools up front instead of behind ToolSearch: saves a round
     // trip on every assistant request, which matters in the launcher.
     alwaysLoad: true,
-    tools: definitions.map((d) =>
+    tools: toolsFor(opts).map((d) =>
       tool(d.name, d.description, zodShape(d.parameters) as any, (args: Record<string, unknown>) => invokeInApp(d.name, args, sessionHandle)),
     ),
   });
 }
 
 /** Tools Claude may use without asking: read and create tiers. "ask" tools go through canUseTool. */
-export function autoAllowedTools(): string[] {
-  return definitions.filter((d) => d.risk !== "ask").map((d) => `mcp__agentx__${d.name}`);
+export function autoAllowedTools(opts: { unattended?: boolean } = {}): string[] {
+  return toolsFor(opts).filter((d) => d.risk !== "ask").map((d) => `mcp__agentx__${d.name}`);
+}
+
+/** mcp__agentx__ name → what its results are, for tools that return untrusted content. */
+export function untrustedToolSources(): Record<string, string> {
+  return Object.fromEntries(definitions.filter((d) => d.untrusted).map((d) => [`mcp__agentx__${d.name}`, d.untrusted!]));
+}
+
+/** mcp__agentx__ names of the tools that always ask. */
+export function askTierTools(): Set<string> {
+  return new Set(definitions.filter((d) => d.risk === "ask").map((d) => `mcp__agentx__${d.name}`));
 }
 
 export function registerMacToolHandlers(): void {

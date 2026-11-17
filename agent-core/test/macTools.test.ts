@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoAllowedTools, setToolDefinitions, zodShape, type ToolDef } from "../src/macTools.ts";
+import { askTierTools, autoAllowedTools, setToolDefinitions, toolsFor, untrustedToolSources, zodShape, type ToolDef } from "../src/macTools.ts";
 import { z } from "zod";
 
 const defs: ToolDef[] = [
@@ -31,4 +31,21 @@ test("parameters become zod schemas with required/optional and types", () => {
   const optional = z.object(zodShape(defs[0].parameters));
   assert.equal(optional.safeParse({}).success, true);
   assert.equal(optional.safeParse({ limit: 2.5 }).success, false);
+});
+
+test("attended-only tools are left out of unattended runs", () => {
+  setToolDefinitions([
+    ...defs,
+    { name: "screen_look", description: "See the screen", risk: "ask", parameters: [], attendedOnly: true },
+    { name: "context_now", description: "What's in front", risk: "read", parameters: [], attendedOnly: true },
+  ]);
+  assert.ok(autoAllowedTools().includes("mcp__agentx__context_now"));
+  assert.ok(!autoAllowedTools({ unattended: true }).includes("mcp__agentx__context_now"));
+  assert.deepEqual(toolsFor({ unattended: true }).map((d) => d.name), ["calendar_events", "notes_create", "mail_send"]);
+});
+
+test("untrusted sources and ask-tier names are exposed for the policy", () => {
+  setToolDefinitions([...defs, { name: "mail_recent", description: "Read mail", risk: "read", parameters: [], untrusted: "your email" }]);
+  assert.deepEqual(untrustedToolSources(), { mcp__agentx__mail_recent: "your email" });
+  assert.deepEqual([...askTierTools()], ["mcp__agentx__mail_send"]);
 });

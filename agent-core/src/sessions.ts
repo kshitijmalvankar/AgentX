@@ -10,6 +10,8 @@
 //   fork). If another app (Terminal, the Claude app) adds messages while
 //   AgentX's process is idle, `session.isStale` reports it so the app can
 //   restart from the newest message instead of writing a side branch.
+// - Security: assistant and unattended sessions run under policy.ts (taint,
+//   egress guard, path guard, rate limit) through PreToolUse/PostToolUse hooks.
 
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -25,9 +27,14 @@ import {
   type SDKMessage,
   type SDKUserMessage,
   type McpServerConfig,
+  type HookCallbackMatcher,
+  type HookEvent,
+  type PreToolUseHookInput,
+  type PostToolUseHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.ts";
-import { autoAllowedTools, macToolsServer } from "./macTools.ts";
+import { askTierTools, autoAllowedTools, macToolsServer, toolDefinitions, untrustedToolSources } from "./macTools.ts";
+import { POLICY_INSTRUCTIONS, SessionPolicy, untrustedReminder } from "./policy.ts";
 import { handle, log, notify, request } from "./rpc.ts";
 
 /** Load the same settings Claude Code uses: ~/.claude, project .claude/, and local overrides. */
@@ -35,8 +42,22 @@ const ALL_SETTINGS = ["user", "project", "local"] as const;
 
 export type SessionState = "starting" | "running" | "waiting" | "idle" | "ended";
 
-/** Read-only built-ins the assistant may use without asking. */
+/** Read-only built-ins the assistant may use without asking (WebFetch asks once the session is tainted). */
 const ASSISTANT_READ_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
+
+/** Built-ins worth an activity-log line when they run. */
+const LOGGED_BUILTINS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "WebFetch"]);
+
+/** Set by the app (`security.configure`); applies to sessions started afterwards. */
+type SecurityConfig = {
+  /** Paths the user allowed despite the path guard (Settings → Security). */
+  pathExceptions: string[];
+  /** Folders whose files don't taint a session (your projects). */
+  trustedRoots: string[];
+  /** The Claude Code binary AgentX verified (Anthropic's signature); used instead of the SDK's lookup. */
+  claudePath?: string;
+};
+const security: SecurityConfig = { pathExceptions: [], trustedRoots: [] };
 
 type StartParams = {
   /** "assistant" adds the Mac tools (mcp__agentx__*) and reads across your home folder. */
@@ -51,6 +72,8 @@ type StartParams = {
   /** Extra MCP servers (the in-process "agentx" Mac tools server). */
   mcpServers?: Record<string, McpServerConfig>;
   allowedTools?: string[];
+  /** Started by a schedule or trigger: starts tainted, no attended-only tools, rate-limited. */
+  unattended?: boolean;
 };
 
 type PermissionAnswer = { behavior: "allow" | "allowAlways" | "deny"; message?: string };
@@ -66,12 +89,29 @@ class LiveSession {
   /** Message ids this process knows about: the newest one when it resumed, plus everything it produced. */
   private readonly known = new Set<string>();
   private readonly baseline: Promise<void>;
+  /** Security policy for assistant and unattended sessions (coding sessions keep Claude Code's own rules). */
+  readonly policy: SessionPolicy | undefined;
+  /** tool_use_id → why the policy asked, for the approval card. */
+  private readonly askReasons = new Map<string, string>();
 
   constructor(params: StartParams) {
     this.params = params;
     this.sessionId = params.resume;
     this.baseline = params.resume ? this.rememberNewest(params.resume) : Promise.resolve();
     const assistant = params.kind === "assistant";
+    const unattended = params.unattended ?? false;
+    this.policy = assistant || unattended
+      ? new SessionPolicy({
+          home: homedir(),
+          cwd: params.cwd,
+          trustedRoots: security.trustedRoots,
+          pathExceptions: security.pathExceptions,
+          unattended,
+          untrustedTools: untrustedToolSources(),
+          askTierTools: askTierTools(),
+        })
+      : undefined;
+    const append = [params.appendSystemPrompt, this.policy ? POLICY_INSTRUCTIONS : undefined].filter(Boolean).join("\n\n") || undefined;
     this.q = query({
       prompt: this.input,
       options: {
@@ -80,17 +120,69 @@ class LiveSession {
         model: params.model,
         permissionMode: params.permissionMode ?? "default",
         settingSources: [...ALL_SETTINGS],
-        systemPrompt: { type: "preset", preset: "claude_code", append: params.appendSystemPrompt },
+        systemPrompt: { type: "preset", preset: "claude_code", append },
         includePartialMessages: true,
         canUseTool: this.canUseTool,
-        mcpServers: assistant ? { ...params.mcpServers, agentx: macToolsServer(this.handle) } : params.mcpServers,
-        allowedTools: assistant ? [...(params.allowedTools ?? []), ...autoAllowedTools(), ...ASSISTANT_READ_TOOLS] : params.allowedTools,
+        hooks: this.policy ? this.policyHooks(this.policy) : undefined,
+        pathToClaudeCodeExecutable: security.claudePath,
+        mcpServers: assistant ? { ...params.mcpServers, agentx: macToolsServer(this.handle, { unattended }) } : params.mcpServers,
+        allowedTools: assistant ? [...(params.allowedTools ?? []), ...autoAllowedTools({ unattended }), ...ASSISTANT_READ_TOOLS] : params.allowedTools,
         additionalDirectories: assistant ? [homedir()] : undefined,
         abortController: this.abort,
         stderr: (data) => log(`[claude ${this.handle.slice(0, 8)}]`, data.trimEnd()),
       },
     });
     void this.pump();
+  }
+
+  /**
+   * The policy's hooks. PreToolUse runs before Claude Code's own permission
+   * rules, so "ask" and "deny" hold even if a settings file allows the tool.
+   * It fails closed: if the hook itself breaks, the tool call is blocked.
+   */
+  private policyHooks(policy: SessionPolicy): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+    return {
+      PreToolUse: [{
+        onFailure: "block",
+        hooks: [async (input) => {
+          const i = input as PreToolUseHookInput;
+          const d = policy.beforeTool(i.tool_name, i.tool_input);
+          if (d.decision === "allow-default") return {};
+          this.activity({ kind: "policy", action: d.decision === "deny" ? "blocked" : "asked", tool: i.tool_name, detail: d.reason });
+          if (d.decision === "ask") this.askReasons.set(i.tool_use_id, d.reason);
+          return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: d.decision, permissionDecisionReason: d.reason } };
+        }],
+      }],
+      PostToolUse: [{
+        hooks: [async (input) => {
+          const i = input as PostToolUseHookInput;
+          this.logTool(i.tool_name, i.tool_input);
+          const source = policy.untrustedSource(i.tool_name, i.tool_input);
+          const newTaint = policy.afterTool(i.tool_name, i.tool_input);
+          if (newTaint) {
+            notify("session.policy", { handle: this.handle, sessionId: this.sessionId, taint: newTaint });
+            this.activity({ kind: "policy", action: "tainted", tool: i.tool_name, detail: newTaint });
+          }
+          // Mac tool results are framed as untrusted in macTools.ts; remind Claude about built-in ones.
+          if (source && !i.tool_name.startsWith("mcp__")) {
+            return { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: untrustedReminder(source) } };
+          }
+          return {};
+        }],
+      }],
+    };
+  }
+
+  /** One line for the app's activity log. */
+  private activity(entry: { kind: "tool" | "policy"; action: string; tool: string; detail?: string }): void {
+    notify("activity", { ...entry, handle: this.handle, sessionId: this.sessionId, unattended: this.params.unattended ?? false });
+  }
+
+  /** Log tools that change something or reach the network (reads aren't logged). */
+  private logTool(name: string, input: unknown): void {
+    const mac = name.startsWith("mcp__agentx__") ? toolDefinitions().find((d) => `mcp__agentx__${d.name}` === name) : undefined;
+    if (!(LOGGED_BUILTINS.has(name) || (mac && mac.risk !== "read"))) return;
+    this.activity({ kind: "tool", action: "ran", tool: name, detail: summarizeInput(input) });
   }
 
   /** Forward every SDK message to the app and keep our state in sync. */
@@ -191,6 +283,22 @@ class LiveSession {
 
   /** Called by Claude Code only when a tool call needs the user's OK. */
   private canUseTool: CanUseTool = async (toolName, input, opts) => {
+    const policyReason = this.askReasons.get(opts.toolUseID);
+    this.askReasons.delete(opts.toolUseID);
+    let recentRiskyActions = 0;
+    if (this.policy) {
+      const over = this.policy.noteRiskyAction();
+      recentRiskyActions = this.policy.recentRiskyActions();
+      if (over && this.params.unattended) {
+        notify("session.policy", { handle: this.handle, sessionId: this.sessionId, rateLimited: true });
+        this.activity({ kind: "policy", action: "rateLimited", tool: toolName, detail: `${recentRiskyActions} risky actions in 10 minutes` });
+        return {
+          behavior: "deny",
+          message: "AgentX stopped this run: it asked for too many risky actions in a short time. The user will review it.",
+          interrupt: true,
+        };
+      }
+    }
     this.setState("waiting");
     try {
       const answer = await request<PermissionAnswer>(
@@ -208,7 +316,12 @@ class LiveSession {
           decisionReason: opts.decisionReason,
           blockedPath: opts.blockedPath,
           defaultToNo: opts.defaultToNo ?? false,
-          canAlwaysAllow: (opts.suggestions?.length ?? 0) > 0 && !opts.suppressAlwaysAllowRule,
+          canAlwaysAllow: (opts.suggestions?.length ?? 0) > 0 && !opts.suppressAlwaysAllowRule && !policyReason
+            && (this.policy?.mayAlwaysAllow(toolName) ?? true),
+          policyReason,
+          taint: this.policy?.taint,
+          recentRiskyActions,
+          unattended: this.params.unattended ?? false,
         },
         opts.signal,
       );
@@ -220,6 +333,15 @@ class LiveSession {
       if (this.state === "waiting") this.setState("running");
     }
   };
+}
+
+/** A short, single-line version of a tool's input for the activity log. */
+function summarizeInput(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const r = input as Record<string, unknown>;
+  const main = r.command ?? r.file_path ?? r.url ?? r.path ?? r.notebook_path;
+  const text = typeof main === "string" ? main : JSON.stringify(input);
+  return text.replace(/\s+/g, " ").slice(0, 300);
 }
 
 function toPermissionResult(answer: PermissionAnswer, suggestions: Parameters<CanUseTool>[2]["suggestions"]): PermissionResult {
@@ -269,6 +391,14 @@ async function withProbe<T>(fn: (q: Query) => Promise<T>): Promise<T> {
 }
 
 export function registerSessionHandlers(): void {
+  // Security settings from the app (path exceptions, trusted folders, the verified Claude Code binary).
+  handle("security.configure", (p: Partial<SecurityConfig>) => {
+    if (Array.isArray(p.pathExceptions)) security.pathExceptions = p.pathExceptions.filter((x) => typeof x === "string");
+    if (Array.isArray(p.trustedRoots)) security.trustedRoots = p.trustedRoots.filter((x) => typeof x === "string");
+    if (typeof p.claudePath === "string" || p.claudePath === null) security.claudePath = p.claudePath ?? undefined;
+    return { ...security };
+  });
+
   handle("account.info", () =>
     withProbe(async (q) => {
       const init = await q.initializationResult();
