@@ -59,6 +59,7 @@ struct ConversationView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            if let taint = conversation.taint { TaintBadge(reason: taint) }
             if let state = conversation.liveState { StateBadge(state: state) }
 
             Button {

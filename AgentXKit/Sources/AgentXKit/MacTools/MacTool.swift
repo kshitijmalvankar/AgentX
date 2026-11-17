@@ -64,25 +64,37 @@ public struct MacTool: Sendable, Identifiable {
     public let description: String
     public let risk: ToolRisk
     public let parameters: [ToolParameter]
+    /// Its results can contain text other people wrote ("your email"). agent-core
+    /// frames them as untrusted data, and reading them marks the conversation
+    /// as having seen untrusted content (see SECURITY.md).
+    public let untrustedSource: String?
+    /// Only for conversations someone is watching (never for scheduled or triggered runs).
+    public let attendedOnly: Bool
     let run: @Sendable (ToolArguments) async throws -> String
 
     public var id: String { name }
     public var qualifiedName: String { "mcp__agentx__\(name)" }
 
     init(_ name: String, area: String, summary: String, risk: ToolRisk, description: String,
-         parameters: [ToolParameter] = [], run: @escaping @Sendable (ToolArguments) async throws -> String) {
+         parameters: [ToolParameter] = [], untrustedSource: String? = nil, attendedOnly: Bool = false,
+         run: @escaping @Sendable (ToolArguments) async throws -> String) {
         self.name = name
         self.area = area
         self.summary = summary
         self.risk = risk
         self.description = description
         self.parameters = parameters
+        self.untrustedSource = untrustedSource
+        self.attendedOnly = attendedOnly
         self.run = run
     }
 
     var definition: JSONValue {
-        ["name": .string(name), "description": .string(description), "risk": .string(risk.rawValue),
-         "parameters": .array(parameters.map(\.json))]
+        var o: [String: JSONValue] = ["name": .string(name), "description": .string(description), "risk": .string(risk.rawValue),
+                                      "parameters": .array(parameters.map(\.json))]
+        if let untrustedSource { o["untrusted"] = .string(untrustedSource) }
+        if attendedOnly { o["attendedOnly"] = true }
+        return .object(o)
     }
 }
 
@@ -113,10 +125,15 @@ public struct ToolArguments: Sendable {
     func bool(_ name: String, default value: Bool) -> Bool { values[name]?.bool ?? value }
     func stringList(_ name: String) -> [String] { values[name]?.array?.compactMap(\.string) ?? [] }
 
+    /// A file path argument. Credentials, keys and other protected places are refused (PathGuard).
     func path(_ name: String) throws -> URL {
         let raw = (try string(name) as NSString).expandingTildeInPath
         guard raw.hasPrefix("/") else { throw ToolError("\"\(name)\" must be an absolute path or start with ~.") }
-        return URL(fileURLWithPath: raw).standardizedFileURL
+        let url = URL(fileURLWithPath: raw).standardizedFileURL
+        if let reason = PathGuard.reason(for: url) {
+            throw ToolError("AgentX blocks access to \(reason) (\(PathGuard.display(url.path))). Don't try another way to reach it.")
+        }
+        return url
     }
 
     func date(_ name: String) throws -> Date {

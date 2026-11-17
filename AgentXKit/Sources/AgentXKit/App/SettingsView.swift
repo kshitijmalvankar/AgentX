@@ -7,9 +7,11 @@ struct SettingsView: View {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
             Tab("Account", systemImage: "person.crop.circle") { AccountSettings() }
             Tab("Assistant", systemImage: "sparkles") { AssistantSettings() }
+            Tab("Security", systemImage: "lock.shield") { SecuritySettingsView() }
+            Tab("Activity", systemImage: "list.bullet.rectangle") { ActivitySettingsView() }
             Tab("Diagnostics", systemImage: "stethoscope") { DiagnosticsSettings() }
         }
-        .frame(width: 660, height: 520)
+        .frame(width: 700, height: 560)
     }
 }
 

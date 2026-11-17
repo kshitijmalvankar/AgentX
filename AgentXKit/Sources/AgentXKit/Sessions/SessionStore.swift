@@ -19,6 +19,13 @@ public struct ApprovalRequest: Identifiable, Sendable {
     public let defaultToNo: Bool
     /// The automation this came from, if it's an unattended run.
     public var automationName: String?
+    /// Why AgentX's security policy asked (e.g. the conversation read a web page), if it did.
+    public var policyReason: String?
+    /// What untrusted content the conversation has read, if any.
+    public var taint: String?
+    /// Risky actions this conversation asked for in the last 10 minutes (including this one).
+    public var recentRiskyActions = 0
+    public var unattended = false
     public let receivedAt = Date()
 
     public var headline: String { title ?? "Claude wants to use \(toolName)" }
@@ -28,6 +35,14 @@ public enum ApprovalAnswer: Sendable {
     case allow
     case allowAlways
     case deny(String? = nil)
+
+    var logLabel: String {
+        switch self {
+        case .allow: "allowed"
+        case .allowAlways: "always allowed"
+        case .deny: "denied"
+        }
+    }
 
     var json: JSONValue {
         switch self {
@@ -77,6 +92,10 @@ public final class SessionStore {
     @ObservationIgnored var onApprovalTimedOut: ((Conversation) -> Void)?
     /// How long an unattended run waits for an approval before denying it.
     @ObservationIgnored var unattendedApprovalTimeout: Duration = .seconds(600)
+    /// An approval was answered (by you, a notification or a timeout): for the activity log.
+    @ObservationIgnored var onApprovalAnswered: ((ApprovalRequest, ApprovalAnswer) -> Void)?
+    /// Set when sessions mustn't start (e.g. the Claude Code binary failed its signature check).
+    public var startBlockedReason: String?
 
     init(client: AgentClient) {
         self.client = client
@@ -305,6 +324,7 @@ public final class SessionStore {
         if kind == .assistant { AssistantWorkspace.prepare() }
         let c = Conversation(id: "auto-\(UUID().uuidString)", kind: kind, sessionId: nil, cwd: cwd, title: title)
         c.automationRunID = runID
+        c.taint = "it was started by a schedule or trigger, not by you"
         c.extraInstructions = instructions
         c.extraAllowedTools = allowedTools
         c.historyLoaded = true
@@ -356,9 +376,12 @@ public final class SessionStore {
                 try await client.call("session.send", ["handle": .string(handle), "text": .string(text)])
                 c.liveState = .running
             } else {
+                await beforeStart?()
+                if let blocked = startBlockedReason { throw AgentError.remote(blocked) }
                 c.liveState = .starting
                 let result = try await client.call("session.start", [
                     "kind": .string(c.kind.rawValue),
+                    "unattended": .bool(c.automationRunID != nil),
                     "appendSystemPrompt": systemPromptAddition(for: c),
                     "allowedTools": c.extraAllowedTools.isEmpty ? .null : .array(c.extraAllowedTools.map(JSONValue.string)),
                     "cwd": .string(c.cwd),
@@ -406,9 +429,19 @@ public final class SessionStore {
 
     // MARK: Approvals
 
+    /// Awaited before a Claude Code process starts (the engine's signature check).
+    @ObservationIgnored var beforeStart: (() async -> Void)?
+
     public func answer(_ approval: ApprovalRequest, _ answer: ApprovalAnswer) {
+        guard approvals.contains(where: { $0.id == approval.id }) else { return }
         approvals.removeAll { $0.id == approval.id }
         approvalWaiters.removeValue(forKey: approval.id)?.resume(returning: answer.json)
+        onApprovalAnswered?(approval, answer)
+    }
+
+    /// The conversation a sidecar handle belongs to: its title and session id (for the activity log).
+    func origin(forHandle handle: String) -> (title: String, sessionId: String?)? {
+        conversation(forHandle: handle).map { ($0.title, $0.sessionId) }
     }
 
     public func answer(approvalID: String, _ answer: ApprovalAnswer) {
@@ -439,6 +472,10 @@ public final class SessionStore {
                 canAlwaysAllow: params["canAlwaysAllow"]?.bool ?? false,
                 defaultToNo: params["defaultToNo"]?.bool ?? false
             )
+            request.policyReason = params["policyReason"]?.string
+            request.taint = params["taint"]?.string
+            request.recentRiskyActions = params["recentRiskyActions"]?.int ?? 0
+            request.unattended = params["unattended"]?.bool ?? false
             if let owner, owner.automationRunID != nil {
                 request.automationName = owner.title
                 // Nobody may be watching: deny it if it isn't answered in time.
@@ -499,6 +536,13 @@ public final class SessionStore {
             }
             cancelApprovals { $0.handle == handle }
             scheduleRefresh(after: .milliseconds(500))
+
+        case "session.policy":
+            guard let c = conversation(forHandle: handle) else { return }
+            if let taint = params["taint"]?.string, c.taint == nil { c.taint = taint }
+            if params["rateLimited"]?.bool == true {
+                c.addNotice("AgentX stopped this run: it asked for too many risky actions in a short time. Look over what it did before running it again.", isError: true)
+            }
 
         case "rpc.cancelled":
             let id = params["id"]?.string

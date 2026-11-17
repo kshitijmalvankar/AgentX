@@ -22,6 +22,8 @@ final class LauncherController {
     var error: String?
     /// Bumped on every show so the text field takes focus.
     private(set) var focusToken = 0
+    /// Text to put in the field on the next show (from an agentx://launcher?q= link). Never sent automatically.
+    var pendingText: String?
 
     @ObservationIgnored private var panel: LauncherPanel?
     private var model: AppModel { AppModel.shared }
@@ -38,7 +40,8 @@ final class LauncherController {
         if panel?.isVisible == true { hide() } else { show() }
     }
 
-    func show() {
+    func show(prefill: String? = nil) {
+        if let prefill { pendingText = prefill }
         if panel == nil {
             panel = LauncherPanel(rootView: LauncherView().environment(model))
         }
@@ -144,6 +147,12 @@ struct LauncherView: View {
     @State private var text = ""
     @FocusState private var focused: Bool
 
+    private func takePendingText() {
+        guard let pending = launcher.pendingText else { return }
+        text = pending
+        launcher.pendingText = nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
@@ -208,7 +217,13 @@ struct LauncherView: View {
         .containerShape(.rect(cornerRadius: Radius.panel))
         .glassEffect(.regular, in: .rect(cornerRadius: Radius.panel))
         .padding(20)
-        .onChange(of: launcher.focusToken) { focused = true }
-        .onAppear { focused = true }
+        .onChange(of: launcher.focusToken) {
+            focused = true
+            takePendingText()
+        }
+        .onAppear {
+            focused = true
+            takePendingText()
+        }
     }
 }

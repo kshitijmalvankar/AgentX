@@ -58,6 +58,7 @@ public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
         // AgentX Dev wears a badge so it's never mistaken for the installed app.
         if AppChannel.current.isDev { NSApp.dockTile.badgeLabel = "DEV" }
         LauncherController.registerHotkey()
+        KillSwitch.registerHotkey()
         // Start the engine (and the automation scheduler) even if no window opens.
         Task { await AppModel.shared.bootstrap() }
     }

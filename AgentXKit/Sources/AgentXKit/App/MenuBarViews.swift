@@ -102,6 +102,13 @@ struct MenuBarContent: View {
 
             if live.isEmpty && approvals.isEmpty {
                 Text("Nothing running.").font(.callout).foregroundStyle(.secondary)
+            } else {
+                Button("Stop Everything", systemImage: "stop.circle", role: .destructive) {
+                    Task { await model.stopEverything(source: "the menu bar") }
+                }
+                .secondaryButton()
+                .controlSize(.small)
+                .help("Stop every running Claude session, deny what's waiting, and pause automations (⌃⌥⌘. by default)")
             }
 
             Divider()

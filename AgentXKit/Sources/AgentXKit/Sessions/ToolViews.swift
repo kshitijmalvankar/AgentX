@@ -134,6 +134,19 @@ struct OutputBlock: View {
     }
 }
 
+/// Shown on a conversation that has read untrusted content.
+struct TaintBadge: View {
+    let reason: String
+
+    var body: some View {
+        Label("Untrusted content", systemImage: "checkmark.shield")
+            .labelStyle(.iconOnly)
+            .foregroundStyle(.orange)
+            .help("This conversation read \(reason). Anything that could send your data out now asks first.")
+            .accessibilityLabel("Read untrusted content: \(reason)")
+    }
+}
+
 /// "Claude wants to run …" with Allow / Always allow / Deny.
 struct ApprovalCard: View {
     let approval: ApprovalRequest
@@ -156,6 +169,25 @@ struct ApprovalCard: View {
                 Button(showDetails ? "Hide details" : "Details") { showDetails.toggle() }
                     .buttonStyle(.link)
                     .font(.caption)
+            }
+
+            if let origin = approval.automationName {
+                Label("From \(origin), which runs on its own", systemImage: "clock.arrow.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let reason = approval.policyReason {
+                Label(reason, systemImage: "checkmark.shield")
+                    .font(.callout)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.1), in: .rect(cornerRadius: Radius.inset))
+                    .help("AgentX's security policy: once a conversation has read content other people wrote, anything that could send data out asks first. See Settings → Security.")
+            }
+            if approval.recentRiskyActions > 3 {
+                Label("This is request \(approval.recentRiskyActions) in the last 10 minutes. Check it's what you expect.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
 
             if showDetails {

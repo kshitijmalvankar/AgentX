@@ -20,7 +20,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         guard isAvailable else { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow")
+        // Allowing from a banner needs the Mac unlocked, so nobody can approve from the lock screen.
+        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow", options: [.authenticationRequired])
         let deny = UNNotificationAction(identifier: Self.denyAction, title: "Deny", options: [.destructive])
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Self.approvalCategory, actions: [allow, deny], intentIdentifiers: []),
@@ -35,12 +36,23 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.title = request.automationName.map { "\($0) needs your OK" } ?? request.headline
         let project = request.cwd.map { ($0 as NSString).lastPathComponent } ?? "Claude"
         content.subtitle = project
-        content.body = ToolPresentation.summary(name: request.toolName, input: request.input, cwd: request.cwd)
-        content.categoryIdentifier = Self.approvalCategory
+        let summary = ToolPresentation.summary(name: request.toolName, input: request.input, cwd: request.cwd)
+        content.body = request.policyReason.map { "\(summary)\n\($0)" } ?? summary
+        // A burst of requests: make them open AgentX and look, rather than allow from the banner.
+        content.categoryIdentifier = request.recentRiskyActions > 3 ? "" : Self.approvalCategory
         content.sound = .default
         content.userInfo = ["approvalID": request.id]
         let req = UNNotificationRequest(identifier: request.id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
+    }
+
+    /// A plain heads-up (e.g. after Stop everything).
+    func postNotice(title: String, body: String) {
+        guard isAvailable else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     /// "Morning brief: …" when an automation run finishes. Clicking it opens the run.

@@ -50,6 +50,10 @@ public final class AppModel {
     public let automations = AutomationCenter()
     /// Your Claude plan's usage (session and weekly limits).
     public let usage: UsageStore
+    /// What Claude and AgentX did that changed something, and every security decision.
+    public let activity = ActivityLog()
+    /// Anthropic's signature on the Claude Code engine binary (nil while checking).
+    public private(set) var engineSignature: CodeSignature.Status?
     /// Folder to preselect the next time the New Session sheet opens.
     public var pendingNewSessionFolder: String?
 
@@ -63,6 +67,8 @@ public final class AppModel {
     public var showLogin = false
 
     @ObservationIgnored private var bootstrapped = false
+    /// Finishes once the engine binary is verified and agent-core has the security settings.
+    @ObservationIgnored private var securityReady: Task<Void, Never>?
     /// Keeps the desktop widgets' data fresh.
     @ObservationIgnored private var widgetWriter: WidgetSnapshotWriter?
     /// Opens the main window; set by a SwiftUI view that has `openWindow`.
@@ -78,6 +84,7 @@ public final class AppModel {
         sessions = SessionStore(client: client)
         usage = UsageStore(client: client)
         client.notificationHandler = { [weak self] method, params in
+            if method == "activity" { self?.recordActivity(params); return }
             self?.sessions.handleNotification(method, params: params)
             if method == "session.state" || method == "session.ended" { self?.widgetWriter?.setNeedsWrite() }
         }
@@ -101,6 +108,18 @@ public final class AppModel {
             NotificationManager.shared.postApproval(request)
             self?.widgetWriter?.setNeedsWrite()
         }
+        sessions.onApprovalAnswered = { [weak self] request, answer in
+            guard let self else { return }
+            let origin = request.automationName ?? self.sessions.origin(forHandle: request.handle)?.title
+            self.activity.record(.approval, answer.logLabel, tool: request.toolName,
+                                 detail: ToolPresentation.summary(name: request.toolName, input: request.input, cwd: request.cwd),
+                                 origin: origin, sessionId: request.sessionId)
+        }
+        sessions.beforeStart = { [weak self] in await self?.securityReady?.value }
+        automations.onRunUpdate = { [weak self] run in
+            let action = run.status == .running ? "started" : run.status.rawValue
+            self?.activity.record(.automation, action, detail: run.summary ?? run.automationName, origin: run.automationName, sessionId: run.sessionId)
+        }
         usage.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
         github.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
         automations.onChange = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
@@ -115,6 +134,7 @@ public final class AppModel {
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }
+        securityReady = Task { await configureSecurity() }
         // These are independent: run them side by side.
         sessions.startWatching()
         async let tools: Void = registerMacTools()
@@ -131,9 +151,67 @@ public final class AppModel {
     public func restartEngine() async {
         await client.restart()
         await client.waitUntilReady()
+        securityReady = Task { await configureSecurity() }
         await registerMacTools()
         await sessions.refresh()
         await reloadAccount()
+    }
+
+    /// Check the Claude Code engine's signature, then give agent-core the
+    /// security settings: the verified binary, your path exceptions, and the
+    /// project folders whose files don't count as untrusted.
+    func configureSecurity() async {
+        let claude = client.paths?.engineClaude
+        let status: CodeSignature.Status = await Task.detached(priority: .userInitiated) {
+            claude.map { CodeSignature.verify(path: $0) } ?? .missing
+        }.value
+        engineSignature = status
+        switch status {
+        case .verified:
+            sessions.startBlockedReason = nil
+        case .failed(let why):
+            sessions.startBlockedReason = "AgentX won't start Claude: the Claude Code engine failed Anthropic's signature check (\(why)). Reinstall agent-core (npm ci in agent-core) and restart."
+            activity.record(.policy, "blocked", tool: "claude", detail: "Engine signature check failed: \(why)")
+        case .missing:
+            sessions.startBlockedReason = "AgentX couldn't find the Claude Code engine inside agent-core. Run npm ci in agent-core and restart."
+        }
+        await sendSecuritySettings()
+    }
+
+    /// Push path exceptions and trusted folders to agent-core (also after you change them in Settings).
+    func sendSecuritySettings() async {
+        let claude = engineSignature?.isVerified == true ? client.paths?.engineClaude : nil
+        let roots = SecuritySettings.trustedRoots(from: sessions.recentProjects, home: PathGuard.home)
+        _ = try? await client.call("security.configure", [
+            "pathExceptions": .array(PathGuard.exceptions.map(JSONValue.string)),
+            "trustedRoots": .array(roots.map(JSONValue.string)),
+            "claudePath": .optional(claude),
+        ])
+    }
+
+    /// An "activity" notification from agent-core (a tool ran, or the policy acted).
+    private func recordActivity(_ params: JSONValue) {
+        let kind: ActivityEntry.Kind = params["kind"]?.string == "policy" ? .policy : .tool
+        let origin = sessions.origin(forHandle: params["handle"]?.string ?? "")
+        activity.record(kind, params["action"]?.string ?? "", tool: params["tool"]?.string,
+                        detail: params["detail"]?.string ?? "", origin: origin?.title,
+                        sessionId: params["sessionId"]?.string ?? origin?.sessionId)
+    }
+
+    /// The kill switch: interrupt and close every running Claude session, deny
+    /// everything waiting for approval, and pause automations.
+    public func stopEverything(source: String = "the menu bar") async {
+        automations.isPaused = true
+        automations.cancelActiveRuns(reason: "Stopped with Stop everything.")
+        let pending = sessions.approvals
+        for approval in pending { sessions.answer(approval, .deny("The user pressed Stop everything.")) }
+        let live = sessions.liveConversations
+        for c in live { await sessions.interrupt(c) }
+        for c in live { await sessions.stop(c) }
+        activity.record(.killSwitch, "stopped",
+                        detail: "Stopped \(live.count) running conversation\(live.count == 1 ? "" : "s"), denied \(pending.count) approval\(pending.count == 1 ? "" : "s") and paused automations (from \(source)).")
+        NotificationManager.shared.postNotice(title: "AgentX stopped everything",
+                                              body: "Automations stay paused until you turn them back on in Automations.")
     }
 
     /// Tell agent-core which Mac tools exist (defined in Swift, run in Swift).
@@ -208,10 +286,38 @@ public final class AppModel {
         ClaudeWebController.shared.startNewChat()
     }
 
-    /// agentx://dashboard, agentx://system, agentx://github, … (from widgets).
+    /// agentx://dashboard, agentx://launcher?q=…, agentx://run/<id>?t=… (from
+    /// widgets and controls). Links that do something need the route token.
     public func handle(_ url: URL) {
-        guard url.scheme == "agentx", let host = url.host else { return }
-        if let item = SidebarItem(rawValue: host) { sidebar = item }
+        switch URLRoute.parse(url, scheme: AppChannel.current.urlScheme, token: RouteToken.current()) {
+        case .success(let route):
+            perform(route)
+        case .failure(.wrongScheme):
+            return
+        case .failure(let refusal):
+            // Never log the query: it can hold the token or text.
+            let why = refusal == .missingToken ? "it didn't carry AgentX's secret token" : "AgentX doesn't know it"
+            activity.record(.link, "refused", detail: "Ignored a link to \(url.scheme ?? "")://\(url.host ?? "") because \(why).")
+        }
+    }
+
+    func perform(_ route: URLRoute) {
+        switch route {
+        case .section(let item):
+            sidebar = item
+            showMainWindow()
+        case .launcher(let prefill):
+            LauncherController.shared.show(prefill: prefill)
+        case .approvals:
+            sidebar = .sessions
+            showMainWindow()
+        case .runAutomation(let id):
+            guard let automation = automations.automations.first(where: { $0.id == id }) else { return }
+            activity.record(.link, "ran", detail: "Started \(automation.name) from a link.", origin: automation.name)
+            automations.runNow(automation)
+        case .stopEverything:
+            Task { await stopEverything(source: "a link") }
+        }
     }
 
     public func openSession(_ key: String) {

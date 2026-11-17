@@ -27,6 +27,8 @@ public final class AutomationCenter {
     @ObservationIgnored private var active: [UUID: (runID: UUID, timeout: Task<Void, Never>)] = [:]
     /// Called after every save (e.g. to update the widgets).
     @ObservationIgnored var onChange: (() -> Void)?
+    /// A run started or finished (for the activity log).
+    @ObservationIgnored var onRunUpdate: ((AutomationRun) -> Void)?
 
     /// While paused, scheduled runs are skipped (manual "Run now" still works).
     /// AgentX Dev starts paused so it doesn't run your automations twice.
@@ -200,6 +202,7 @@ public final class AutomationCenter {
         }
         active[automation.id] = (run.id, timeout)
         save()
+        onRunUpdate?(run)
 
         let cwd = automation.kind == .coding ? (automation.folder ?? NSHomeDirectory()) : AssistantWorkspace.path
         let c = await sessions.startAutomationRun(
@@ -242,6 +245,12 @@ public final class AutomationCenter {
         save()
     }
 
+    /// Stop everything: record every run in progress as stopped (their
+    /// sessions are being closed, so no result will arrive).
+    func cancelActiveRuns(reason: String) {
+        for id in Array(active.keys) { finish(id, status: .failed, summary: reason, sessionId: nil) }
+    }
+
     private func timedOut(_ automationID: UUID) async {
         guard let runID = active[automationID]?.runID else { return }
         if let c = sessions?.conversations.values.first(where: { $0.automationRunID == runID }) {
@@ -260,7 +269,10 @@ public final class AutomationCenter {
             if let sessionId { $0.sessionId = sessionId }
         }
         save()
-        if let run = runs.first(where: { $0.id == entry.runID }) { NotificationManager.shared.postAutomationResult(run) }
+        if let run = runs.first(where: { $0.id == entry.runID }) {
+            NotificationManager.shared.postAutomationResult(run)
+            onRunUpdate?(run)
+        }
     }
 
     private func record(skipped automation: Automation, reason: String) {

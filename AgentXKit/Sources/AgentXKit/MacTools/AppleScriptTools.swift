@@ -9,7 +9,7 @@ enum AppleScriptTools {
                 parameters: [
                     .init("count", .integer, "How many messages (default 10, max 30).", required: false),
                     .init("unreadOnly", .boolean, "Only unread messages.", required: false),
-                ]) { args in
+                ], untrustedSource: "your email") { args in
             let count = min(30, max(1, args.int("count", default: 10)))
             let output = try await AppleScript.run("""
                 on run argv
@@ -53,7 +53,7 @@ enum AppleScriptTools {
         },
         MacTool("notes_search", area: "Notes", summary: "Search notes", risk: .read,
                 description: "Find notes in Apple Notes whose title or text contains the given words.",
-                parameters: [.init("query", .string, "Text to look for.")]) { args in
+                parameters: [.init("query", .string, "Text to look for.")], untrustedSource: "your notes") { args in
             let output = try await AppleScript.run("""
                 on run argv
                   set q to item 1 of argv

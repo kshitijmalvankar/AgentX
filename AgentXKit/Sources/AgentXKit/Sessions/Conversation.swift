@@ -57,6 +57,10 @@ public final class Conversation: Identifiable {
 
     /// Set when this conversation is an unattended automation run.
     public var automationRunID: UUID?
+    /// Set once the conversation has read untrusted content (a web page, an
+    /// email, …): what it read. From then on, anything that could send data
+    /// out asks first. Unattended runs start with this set.
+    public var taint: String?
     /// Extra system-prompt text for this conversation (automation runs).
     var extraInstructions: String?
     /// Extra Claude Code permission rules (automation runs).

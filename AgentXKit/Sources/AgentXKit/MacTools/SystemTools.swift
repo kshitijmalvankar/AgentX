@@ -163,7 +163,8 @@ enum SystemTools {
             return "Volume set to \(level)%."
         },
         MacTool("clipboard_read", area: "Clipboard", summary: "Read the clipboard", risk: .ask,
-                description: "Read the text currently on the clipboard. Asks first, since the clipboard can hold private things.") { _ in
+                description: "Read the text currently on the clipboard. Asks first, since the clipboard can hold private things.",
+                untrustedSource: "the clipboard") { _ in
             let text = await MainActor.run { NSPasteboard.general.string(forType: .string) }
             guard let text, !text.isEmpty else { return "The clipboard has no text." }
             return String(text.prefix(20_000))

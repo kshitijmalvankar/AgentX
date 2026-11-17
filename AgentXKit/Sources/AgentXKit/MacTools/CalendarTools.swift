@@ -125,7 +125,7 @@ enum CalendarTools {
                     .init("end", .string, "Range end, local ISO 8601. Defaults to the end of the start day.", required: false),
                     .init("search", .string, "Only events whose title, location or notes contain this text.", required: false),
                     .init("calendar", .string, "Only this calendar (by name).", required: false),
-                ]) { args in
+                ], untrustedSource: "calendar events (invites can come from anyone)") { args in
             let start = try args.optionalDate("start") ?? Calendar.current.startOfDay(for: Date())
             let end = try args.optionalDate("end") ?? Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: start))!
             return try await CalendarService.shared.events(from: start, to: end, matching: args.optionalString("search"), calendar: args.optionalString("calendar"))
