@@ -18,7 +18,8 @@ test("a tool call travels sidecar -> app -> sidecar", async () => {
     const m = JSON.parse(line);
     if (m.method === "tool.invoke") {
       invoked = m.params;
-      send({ id: m.id, result: { text: `ran ${m.params.name} with ${JSON.stringify(m.params.args)}`, isError: false } });
+      const image = m.params.name === "screen_look" ? { data: "iVBORw0KGgo=", mimeType: "image/png" } : undefined;
+      send({ id: m.id, result: { text: `ran ${m.params.name} with ${JSON.stringify(m.params.args)}`, isError: false, image } });
     } else if (typeof m.id === "number") {
       responses.get(m.id)?.(m);
     }
@@ -44,6 +45,12 @@ test("a tool call travels sidecar -> app -> sidecar", async () => {
     await call(4, "tools.register", { tools: [{ name: "mail_recent", description: "Read mail", risk: "read", parameters: [], untrusted: "your email" }] });
     const mail = await call(5, "tools.call", { name: "mail_recent", args: {} });
     assert.match(mail.result.content[0].text, /^<untrusted source="your email">\n[\s\S]*\n<\/untrusted>$/);
+
+    // A picture from the app comes back as an MCP image, before the text.
+    await call(7, "tools.register", { tools: [{ name: "screen_look", description: "See a window", risk: "ask", parameters: [], untrusted: "a screenshot of your screen" }] });
+    const look = await call(8, "tools.call", { name: "screen_look", args: {} });
+    assert.deepEqual(look.result.content[0], { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" });
+    assert.match(look.result.content[1].text, /^<untrusted source="a screenshot of your screen">/);
 
     // Security settings round-trip.
     const sec = await call(6, "security.configure", { pathExceptions: ["~/.config/gh"], trustedRoots: ["/tmp/project"] });

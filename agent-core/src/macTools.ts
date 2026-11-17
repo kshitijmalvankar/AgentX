@@ -29,7 +29,10 @@ export type ToolDef = {
   attendedOnly?: boolean;
 };
 
-type ToolResult = { content: { type: "text"; text: string }[]; isError: boolean };
+type ToolResult = {
+  content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[];
+  isError: boolean;
+};
 
 let definitions: ToolDef[] = [];
 
@@ -62,10 +65,17 @@ export function zodShape(params: ParamDef[]): Record<string, z.ZodType> {
 /** Ask the app to run a tool and turn its answer into an MCP result. */
 export async function invokeInApp(name: string, args: Record<string, unknown>, sessionHandle?: string): Promise<ToolResult> {
   try {
-    const result = await request<{ text: string; isError?: boolean }>("tool.invoke", { handle: sessionHandle, name, args });
+    const result = await request<{ text: string; isError?: boolean; image?: { data: string; mimeType: string } }>(
+      "tool.invoke", { handle: sessionHandle, name, args });
     const source = definitions.find((d) => d.name === name)?.untrusted;
     const text = source && !result.isError ? frameUntrusted(source, result.text) : result.text;
-    return { content: [{ type: "text", text }], isError: result.isError ?? false };
+    const content: ToolResult["content"] = [];
+    // A picture from the app (screen_look) goes first, then the words about it.
+    if (result.image && typeof result.image.data === "string" && /^image\/(png|jpeg)$/.test(result.image.mimeType)) {
+      content.push({ type: "image", data: result.image.data, mimeType: result.image.mimeType });
+    }
+    content.push({ type: "text", text });
+    return { content, isError: result.isError ?? false };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { content: [{ type: "text", text: `AgentX couldn't run ${name}: ${message}` }], isError: true };

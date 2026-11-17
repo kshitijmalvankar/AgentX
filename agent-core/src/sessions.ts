@@ -48,6 +48,28 @@ const ASSISTANT_READ_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"];
 /** Built-ins worth an activity-log line when they run. */
 const LOGGED_BUILTINS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "WebFetch"]);
 
+/** A picture attached to a message (e.g. a window you chose to share). */
+export type ImageInput = { mediaType: string; data: string };
+
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** About 6 MB of picture per image, base64. */
+const MAX_IMAGE_BASE64 = 8 * 1024 * 1024;
+
+/** A user message's content: images first, then the text. */
+export function userContent(text: string, images: ImageInput[] = []): string | unknown[] {
+  if (images.length === 0) return text;
+  if (images.length > 4) throw new Error("At most 4 images per message.");
+  const blocks: unknown[] = images.map((image) => {
+    if (!IMAGE_TYPES.has(image.mediaType)) throw new Error(`Unsupported image type ${image.mediaType}.`);
+    if (typeof image.data !== "string" || image.data.length === 0 || image.data.length > MAX_IMAGE_BASE64) {
+      throw new Error("Image is empty or too large.");
+    }
+    return { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } };
+  });
+  blocks.push({ type: "text", text });
+  return blocks;
+}
+
 /** Set by the app (`security.configure`); applies to sessions started afterwards. */
 type SecurityConfig = {
   /** Paths the user allowed despite the path guard (Settings → Security). */
@@ -76,6 +98,8 @@ type StartParams = {
   unattended?: boolean;
   /** Start as having read untrusted content (text carried over from claude.ai, a resumed tainted conversation). */
   taint?: string;
+  /** Pictures sent with the first prompt. */
+  images?: ImageInput[];
 };
 
 type PermissionAnswer = { behavior: "allow" | "allowAlways" | "deny"; message?: string };
@@ -177,7 +201,7 @@ class LiveSession {
   }
 
   /** One line for the app's activity log. */
-  private activity(entry: { kind: "tool" | "policy"; action: string; tool: string; detail?: string }): void {
+  activity(entry: { kind: "tool" | "policy"; action: string; tool: string; detail?: string }): void {
     notify("activity", { ...entry, handle: this.handle, sessionId: this.sessionId, unattended: this.params.unattended ?? false });
   }
 
@@ -252,14 +276,23 @@ class LiveSession {
     return stale;
   }
 
-  send(text: string): void {
+  send(text: string, images: ImageInput[] = []): void {
+    const content = userContent(text, images);
     this.input.push({
       type: "user",
-      message: { role: "user", content: text },
+      message: { role: "user", content },
       parent_tool_use_id: null,
       origin: { kind: "human" },
     } as SDKUserMessage);
     this.setState("running");
+  }
+
+  /** The app attached something untrusted mid-conversation (what's on screen): guard egress from now on. */
+  markTainted(reason: string): void {
+    if (!this.policy || this.policy.taint || !reason.trim()) return;
+    this.policy.taint = reason.trim();
+    notify("session.policy", { handle: this.handle, sessionId: this.sessionId, taint: this.policy.taint });
+    this.activity({ kind: "policy", action: "tainted", tool: "context", detail: this.policy.taint });
   }
 
   /** Plan usage through this session's own process (no extra process needed). */
@@ -445,11 +478,15 @@ export function registerSessionHandlers(): void {
     if (!p.cwd) throw new Error("A working folder is required.");
     const s = new LiveSession(p);
     live.set(s.handle, s);
-    if (p.prompt?.trim()) s.send(p.prompt);
+    if (p.prompt?.trim()) s.send(p.prompt, p.images ?? []);
     return { handle: s.handle, sessionId: s.sessionId };
   });
 
-  handle("session.send", (p: { handle: string; text: string }) => getLive(p.handle).send(p.text));
+  handle("session.send", (p: { handle: string; text: string; images?: ImageInput[]; taint?: string }) => {
+    const s = getLive(p.handle);
+    if (p.taint) s.markTainted(p.taint);
+    s.send(p.text, p.images ?? []);
+  });
   handle("session.isStale", async (p: { handle: string }) => ({ stale: await getLive(p.handle).isStale() }));
   handle("session.interrupt", (p: { handle: string }) => getLive(p.handle).interrupt());
   handle("session.setModel", (p: { handle: string; model?: string }) => getLive(p.handle).setModel(p.model));
