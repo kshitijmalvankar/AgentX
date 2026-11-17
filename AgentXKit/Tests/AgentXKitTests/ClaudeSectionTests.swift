@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import AgentXKit
 
-@Suite("Claude section")
+@Suite("Chats section")
 @MainActor
 struct ClaudeSectionTests {
     @Test func oneSectionReplacesChatsAndAssistant() {
-        #expect(SidebarItem.allCases.map(\.rawValue) == ["dashboard", "claude", "sessions", "github", "system", "automations"])
+        #expect(SidebarItem.allCases.map(\.rawValue) == ["dashboard", "chats", "sessions", "github", "system", "automations"])
         #expect(ClaudeMode.mac.title == "On this Mac")
         #expect(ClaudeMode.web.explanation.contains("Can't act on your Mac"))
     }

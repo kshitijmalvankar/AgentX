@@ -92,7 +92,7 @@ struct RootView: View {
     @ViewBuilder private var detail: some View {
         switch model.sidebar ?? .dashboard {
         case .dashboard: DashboardView()
-        case .claude: ClaudeView()
+        case .chats: ChatsView()
         case .sessions: SessionsView()
         case .github: GitHubView()
         case .system: SystemView()
@@ -150,11 +150,11 @@ private struct Sidebar: View {
         .safeAreaInset(edge: .bottom) { EngineStatusFooter().padding(10) }
     }
 
-    /// Approvals waiting: coding sessions on Sessions, Mac conversations on Claude.
+    /// Approvals waiting: coding sessions on Sessions, Mac conversations on Chats.
     private func badge(for item: SidebarItem) -> Int {
         switch item {
         case .sessions: model.sessions.approvalCount(kind: .coding)
-        case .claude: model.sessions.approvalCount(kind: .assistant)
+        case .chats: model.sessions.approvalCount(kind: .assistant)
         default: 0
         }
     }

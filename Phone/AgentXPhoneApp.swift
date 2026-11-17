@@ -74,7 +74,7 @@ struct MainTabs: View {
             Tab("Mac", systemImage: "desktopcomputer") { OverviewView() }
             Tab("Approvals", systemImage: "hand.raised") { ApprovalsView() }
                 .badge(model.snapshot?.approvals.count ?? 0)
-            Tab("Claude", systemImage: "bubble.left.and.text.bubble.right") { ConversationsView() }
+            Tab("Chats", systemImage: "bubble.left.and.text.bubble.right") { ConversationsView() }
             Tab("Activity", systemImage: "list.bullet.rectangle") { ActivityView() }
         }
     }

@@ -63,7 +63,7 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | Path | What |
 |---|---|
 | `AgentXKit/Sources/AgentXKit/App` | Scenes (window, menu bar, settings), dashboard, `AppModel` |
-| `AgentXKit/Sources/AgentXKit/Claude` | Claude section: Mac conversations and claude.ai (web view, chat-only) |
+| `AgentXKit/Sources/AgentXKit/Claude` | Chats section: Mac conversations and claude.ai (web view, chat-only) |
 | `AgentXKit/Sources/AgentXKit/Sessions` | Session list, conversation view, tool cards, approvals, phone sync |
 | `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models, `AppChannel` (installed vs Dev) |
 | `AgentXKit/Sources/AgentXKit/Security` | Path guard, activity log, kill switch, link tokens, signature checks, Settings → Security |
@@ -77,9 +77,9 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `AgentXKit/Sources/AgentXShared` | The widget snapshot format, shared by the app and the widgets |
 | `project.yml` | XcodeGen spec (the `.xcodeproj` is generated, not committed) |
 
-### Claude: on this Mac, or claude.ai
+### Chats: on this Mac, or claude.ai
 
-The **Claude** section is the one place to talk to Claude. A switch at the top picks the side, and AgentX remembers the last one you used. **New Chat** (⇧⌘N) starts a chat on that side.
+The **Chats** section is the one place to talk to Claude. A switch at the top picks the side, and AgentX remembers the last one you used. **New Chat** (⇧⌘N) starts a chat on that side.
 
 | | **On this Mac** | **claude.ai** |
 |---|---|---|
@@ -105,7 +105,7 @@ To sign in, enter your email in the email field. Google doesn't allow its sign-i
 
 ### Mac tools and the launcher
 
-Conversations **on this Mac** (in the Claude section) and the **⌥Space launcher** talk to Claude with Mac tools:
+Conversations **on this Mac** (in Chats) and the **⌥Space launcher** talk to Claude with Mac tools:
 
 | Area | What it can do |
 |---|---|
@@ -130,7 +130,7 @@ The AgentX iPhone app watches and controls your Mac:
 
 - **Mac:** vitals, plan usage, what's running, today's events and reminders (tap the circle or swipe to tick one off; tap for details), automations, and **Stop Everything**.
 - **Approvals:** what's waiting for your OK, with the full details. Allow and Deny need Face ID.
-- **Claude:** your Mac conversations (and running coding sessions, view-only). Message Claude on your Mac and watch the reply stream in.
+- **Chats:** your Mac conversations (and running coding sessions, view-only). Message Claude on your Mac and watch the reply stream in.
 - **Activity:** the Mac's activity log.
 
 To set it up:
@@ -225,7 +225,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M4: automations (scheduled Claude tasks with notifications)
 - [x] M5: plan-usage meter, desktop widgets
 - [x] M6: installable app next to AgentX Dev, security policy (untrusted content, protected files, kill switch, activity log)
-- [x] One Claude section: Mac conversations and claude.ai side by side, with hand-off both ways
+- [x] One Chats section: Mac conversations and claude.ai side by side, with hand-off both ways
 - [x] iPhone companion: monitor, approve with Face ID, Stop Everything, message Claude on your Mac (encrypted link, QR pairing)
 - [ ] M7: memory and context (what's on screen, selection, browser tab)
 - [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center

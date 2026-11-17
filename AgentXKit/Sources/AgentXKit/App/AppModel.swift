@@ -3,14 +3,14 @@ import Foundation
 import Observation
 
 public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case dashboard, claude, sessions, github, system, automations
+    case dashboard, chats, sessions, github, system, automations
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
         case .dashboard: "Dashboard"
-        case .claude: "Claude"
+        case .chats: "Chats"
         case .sessions: "Sessions"
         case .github: "GitHub"
         case .system: "System"
@@ -21,7 +21,7 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
     public var symbol: String {
         switch self {
         case .dashboard: "square.grid.2x2"
-        case .claude: "bubble.left.and.text.bubble.right"
+        case .chats: "bubble.left.and.text.bubble.right"
         case .sessions: "terminal"
         case .github: "chevron.left.forwardslash.chevron.right"
         case .system: "gauge.with.dots.needle.50percent"
@@ -30,7 +30,7 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
     }
 }
 
-/// The two sides of the Claude section.
+/// The two sides of the Chats section.
 public enum ClaudeMode: String, CaseIterable, Identifiable, Sendable {
     /// Claude Code on this Mac, with AgentX's Mac tools (the assistant).
     case mac
@@ -85,7 +85,7 @@ public final class AppModel {
     public var pendingNewSessionFolder: String?
 
     public var sidebar: SidebarItem? = .dashboard
-    /// Which side of the Claude section is showing (remembered between launches).
+    /// Which side of the Chats section is showing (remembered between launches).
     public var claudeMode: ClaudeMode = ClaudeMode(rawValue: UserDefaults.standard.string(forKey: "claudeMode") ?? "") ?? .mac {
         didSet { UserDefaults.standard.set(claudeMode.rawValue, forKey: "claudeMode") }
     }
@@ -258,7 +258,7 @@ public final class AppModel {
         _ = try? await client.call("tools.register", ["tools": MacToolbox.definitions])
     }
 
-    /// Ask the assistant something (the Claude section's Mac side and the launcher).
+    /// Ask the assistant something (the Mac side of Chats and the launcher).
     /// `taint` starts a new conversation as having read untrusted content.
     @discardableResult
     public func askAssistant(_ prompt: String, in conversation: Conversation? = nil, taint: String? = nil) async -> Conversation {
@@ -320,9 +320,9 @@ public final class AppModel {
         Task { await sessions.startNew(cwd: NSHomeDirectory(), prompt: prompt, model: nil, mode: .default) }
     }
 
-    /// Show the Claude section and start a new chat on whichever side you used last.
+    /// Show Chats and start a new chat on whichever side you used last.
     public func newChat() {
-        sidebar = .claude
+        sidebar = .chats
         switch claudeMode {
         case .mac: sessions.selectAssistant(nil)
         case .web: ClaudeWebController.shared.startNewChat()
@@ -331,7 +331,7 @@ public final class AppModel {
 
     /// Show claude.ai and start a new chat there.
     public func startNewChat() {
-        sidebar = .claude
+        sidebar = .chats
         claudeMode = .web
         ClaudeWebController.shared.startNewChat()
     }
@@ -341,7 +341,7 @@ public final class AppModel {
     /// conversation starts as having read untrusted content: the chat may
     /// quote web pages or files.
     public func continueOnMac(_ text: String) {
-        sidebar = .claude
+        sidebar = .chats
         claudeMode = .mac
         sessions.selectAssistant(nil)
         macHandoff = MacHandoff(text: text, taint: "text carried over from claude.ai")
@@ -392,8 +392,8 @@ public final class AppModel {
         case .section(let item):
             sidebar = item
             showMainWindow()
-        case .claude(let mode):
-            sidebar = .claude
+        case .chats(let mode):
+            sidebar = .chats
             claudeMode = mode
             showMainWindow()
         case .launcher(let prefill):
@@ -413,7 +413,7 @@ public final class AppModel {
     public func openSession(_ key: String) {
         let c = sessions.conversations[key] ?? sessions.conversations.values.first { $0.sessionId == key }
         if c?.kind == .assistant || sessions.assistantSessions.contains(where: { $0.sessionId == key }) {
-            sidebar = .claude
+            sidebar = .chats
             claudeMode = .mac
             sessions.selectAssistant(key)
         } else {

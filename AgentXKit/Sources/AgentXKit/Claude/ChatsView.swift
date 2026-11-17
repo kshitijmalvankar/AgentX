@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Claude section: one place to talk to Claude, with two sides.
+/// The Chats section: one place to talk to Claude, with two sides.
 ///
 /// - **On this Mac**: Claude Code with AgentX's Mac tools (Calendar, files,
 ///   apps, settings, Mail…), approvals and the security policy. Also what the
@@ -10,7 +10,7 @@ import SwiftUI
 ///
 /// The two keep separate histories (claude.ai's isn't available to apps), so
 /// "Continue on Mac" and "Continue in claude.ai" carry the text across.
-struct ClaudeView: View {
+struct ChatsView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -21,7 +21,7 @@ struct ClaudeView: View {
             case .web: ClaudeWebPane()
             }
         }
-        .navigationTitle("Claude")
+        .navigationTitle("Chats")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Where", selection: $model.claudeMode) {

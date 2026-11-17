@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-/// The Claude section's claude.ai side: your regular Claude chats, the same
+/// The Chats section's claude.ai side: your regular Claude chats, the same
 /// ones as on your phone. It can't act on your Mac; "Continue on Mac" carries
 /// a chat over to the other side.
 struct ClaudeWebPane: View {

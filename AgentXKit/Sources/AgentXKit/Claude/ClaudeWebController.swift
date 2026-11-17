@@ -104,7 +104,7 @@ public final class ClaudeWebController: NSObject {
         isLoading = false
     }
 
-    /// Load claude.ai the first time its side of the Claude section is shown.
+    /// Load claude.ai the first time its side of Chats is shown.
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true

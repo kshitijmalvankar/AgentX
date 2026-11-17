@@ -23,7 +23,7 @@ struct ConversationsView: View {
                     Section("Coding sessions running") { ForEach(coding) { row($0) } }
                 }
             }
-            .navigationTitle("Claude")
+            .navigationTitle("Chats")
             .navigationDestination(for: String.self) { id in ChatView(conversationID: id, path: $path) }
             .refreshable { await model.request(.refresh) }
             .toolbar {

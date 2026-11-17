@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Claude section's "On this Mac" side: conversations with Claude that
+/// The Chats section's "On this Mac" side: conversations with Claude that
 /// can act on your Mac (Calendar, Reminders, files, apps, Shortcuts, Mail,
 /// Notes, Messages). Each one is a Claude Code session, shown with the same
 /// view as coding sessions (approvals, phone sync, terminal).
