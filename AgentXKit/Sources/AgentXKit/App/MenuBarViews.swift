@@ -116,7 +116,7 @@ struct MenuBarContent: View {
                 Button("Ask…") { LauncherController.shared.show() }
                     .primaryButton()
                     .help("Open the launcher (⌥Space by default)")
-                Button("New Chat") { openMain(); model.startNewChat() }
+                Button("New Chat") { openMain(); model.newChat() }
                     .secondaryButton()
                 Button("New Session") { openMain(); model.showNewSession = true }
                     .secondaryButton()

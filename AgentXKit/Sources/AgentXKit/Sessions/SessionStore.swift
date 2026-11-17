@@ -175,6 +175,11 @@ public final class SessionStore {
         conversation.sessionId.flatMap { externalOwners[$0] } ?? []
     }
 
+    /// How many approvals are waiting in conversations of one kind (sidebar badges).
+    public func approvalCount(kind: ConversationKind) -> Int {
+        approvals.filter { conversation(forHandle: $0.handle)?.kind == kind }.count
+    }
+
     public func approvals(for conversation: Conversation) -> [ApprovalRequest] {
         guard let handle = conversation.liveHandle else { return [] }
         return approvals.filter { $0.handle == handle }
@@ -336,12 +341,14 @@ public final class SessionStore {
     /// For tests and tools that build a conversation themselves.
     func insert(_ c: Conversation) { conversations[c.id] = c }
 
-    /// Start a new assistant conversation (Mac tools on).
+    /// Start a new assistant conversation (Mac tools on). `taint` starts it as
+    /// having read untrusted content (e.g. text carried over from claude.ai).
     @discardableResult
-    public func startAssistant(prompt: String) async -> Conversation {
+    public func startAssistant(prompt: String, taint: String? = nil) async -> Conversation {
         AssistantWorkspace.prepare()
         let c = Conversation(id: "new-\(UUID().uuidString)", kind: .assistant, sessionId: nil,
                              cwd: AssistantWorkspace.path, title: String(prompt.prefix(80)))
+        c.taint = taint
         c.historyLoaded = true
         conversations[c.id] = c
         assistantSelectedKey = c.id
@@ -382,6 +389,8 @@ public final class SessionStore {
                 let result = try await client.call("session.start", [
                     "kind": .string(c.kind.rawValue),
                     "unattended": .bool(c.automationRunID != nil),
+                    // Keeps a conversation that already read untrusted content marked after its process restarts.
+                    "taint": .optional(c.taint),
                     "appendSystemPrompt": systemPromptAddition(for: c),
                     "allowedTools": c.extraAllowedTools.isEmpty ? .null : .array(c.extraAllowedTools.map(JSONValue.string)),
                     "cwd": .string(c.cwd),

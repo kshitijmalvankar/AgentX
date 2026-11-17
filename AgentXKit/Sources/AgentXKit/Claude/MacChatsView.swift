@@ -1,28 +1,29 @@
 import SwiftUI
 
-/// Assistant section: chats with Claude that can act on your Mac
-/// (Calendar, Reminders, Files, Apps, Shortcuts, Mail, Notes, Messages).
-struct AssistantView: View {
+/// The Claude section's "On this Mac" side: conversations with Claude that
+/// can act on your Mac (Calendar, Reminders, files, apps, Shortcuts, Mail,
+/// Notes, Messages). Each one is a Claude Code session, shown with the same
+/// view as coding sessions (approvals, phone sync, terminal).
+struct MacChatsView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         HSplitView {
-            AssistantList()
+            MacChatList()
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
             Group {
                 if let c = model.sessions.selectedAssistantConversation {
-                    AssistantChatView(conversation: c).id(c.id)
+                    ConversationView(conversation: c).id(c.id)
                 } else {
-                    AssistantHome()
+                    MacChatHome()
                 }
             }
             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationTitle("Assistant")
     }
 }
 
-/// Suggestions shown on an empty assistant (also used by the launcher).
+/// Suggestions shown on an empty Mac conversation (also used by the launcher).
 enum AssistantSuggestions {
     static let all = [
         "What's on my calendar today?",
@@ -34,7 +35,7 @@ enum AssistantSuggestions {
     ]
 }
 
-private struct AssistantList: View {
+private struct MacChatList: View {
     @Environment(AppModel.self) private var model
 
     private var store: SessionStore { model.sessions }
@@ -67,9 +68,6 @@ private struct AssistantList: View {
                 Text("No conversations yet").foregroundStyle(.secondary)
             }
         }
-        .toolbar {
-            Button("New Conversation", systemImage: "square.and.pencil") { store.selectAssistant(nil) }
-        }
     }
 
     private func row(_ title: String, detail: String) -> some View {
@@ -81,16 +79,35 @@ private struct AssistantList: View {
     }
 }
 
-/// Empty state: a big prompt, suggestions, and what the assistant can do.
-private struct AssistantHome: View {
+/// Empty state: a big prompt, suggestions, and what Claude can do on your Mac.
+/// Text carried over from claude.ai ("Continue on Mac") lands in the composer.
+private struct MacChatHome: View {
     @Environment(AppModel.self) private var model
     @State private var draft = ""
+    /// Set while the draft holds text carried over from claude.ai.
+    @State private var carriedTaint: String?
 
     var body: some View {
         VStack(spacing: 22) {
             Spacer()
-            Image(systemName: "sparkles").font(.system(size: 40)).foregroundStyle(.secondary)
+            Image(systemName: "desktopcomputer").font(.system(size: 40)).foregroundStyle(.secondary)
             Text("What can I do on your Mac?").font(.largeTitle.bold())
+            if carriedTaint != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "cloud").foregroundStyle(.secondary)
+                    Text("Brought over from claude.ai. Add what you'd like done, then send. Since it may quote web pages or files, Claude will ask before anything that sends data out.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Clear", systemImage: "xmark.circle") {
+                        draft = ""
+                        carriedTaint = nil
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                }
+                .frame(maxWidth: 640)
+            }
             Composer(text: $draft, isWorking: false, send: ask, stop: {})
                 .frame(maxWidth: 640)
             FlowSuggestions(ask: ask)
@@ -102,10 +119,22 @@ private struct AssistantHome: View {
             Spacer()
         }
         .padding(24)
+        .navigationSubtitle("Can act on your Mac")
+        .onAppear(perform: takeHandoff)
+        .onChange(of: model.macHandoff) { takeHandoff() }
     }
 
     private func ask(_ text: String) {
-        Task { await model.askAssistant(text) }
+        let taint = carriedTaint
+        carriedTaint = nil
+        Task { await model.askAssistant(text, taint: taint) }
+    }
+
+    private func takeHandoff() {
+        guard let handoff = model.macHandoff else { return }
+        draft = handoff.text
+        carriedTaint = handoff.taint
+        model.macHandoff = nil
     }
 }
 
@@ -120,44 +149,6 @@ struct FlowSuggestions: View {
                     .secondaryButton()
                     .lineLimit(1)
             }
-        }
-    }
-}
-
-struct AssistantChatView: View {
-    @Environment(AppModel.self) private var model
-    @Bindable var conversation: Conversation
-    @State private var draft = ""
-
-    private var store: SessionStore { model.sessions }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(conversation.title).font(.headline).lineLimit(1).truncationMode(.tail)
-                    Text("Assistant · Calendar, Files, Apps, Mail and more")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if let state = conversation.liveState { StateBadge(state: state) }
-                if conversation.isLive {
-                    Button("End", systemImage: "stop.circle") { Task { await store.stop(conversation) } }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
-                        .help("End this conversation's Claude Code process. You can pick it up again later.")
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            Divider()
-            TranscriptView(conversation: conversation)
-            ApprovalList(conversation: conversation)
-            Composer(text: $draft, isWorking: conversation.isWorking,
-                     send: { text in Task { await store.send(text, in: conversation) } },
-                     stop: { Task { await store.interrupt(conversation) } })
         }
     }
 }

@@ -10,7 +10,7 @@ import WebKit
 /// signed in (cookies live in AgentX's own web data store), and opens
 /// non-Claude links in your default browser.
 ///
-/// Chats is chat-only: Claude Code lives in AgentX's Sessions section. A small
+/// The claude.ai side is chat-only: Claude Code lives in AgentX's Sessions section. A small
 /// stylesheet hides links into claude.ai/code, and if the page goes there
 /// anyway, AgentX steps back and switches to Sessions.
 @MainActor
@@ -34,7 +34,7 @@ public final class ClaudeWebController: NSObject {
     @ObservationIgnored private var hasLoaded = false
     @ObservationIgnored private var unloadTask: Task<Void, Never>?
     /// claude.ai's web process uses a few hundred MB; it's released after the
-    /// Chats section has been out of sight this long (sign-in is kept).
+    /// The claude.ai side has been out of sight this long (sign-in is kept).
     static let unloadAfter: Duration = .seconds(15 * 60)
 
     override private init() {
@@ -73,14 +73,14 @@ public final class ClaudeWebController: NSObject {
         ]
     }
 
-    /// Chats came into view: cancel any pending unload and make sure the page is there.
+    /// The claude.ai side came into view: cancel any pending unload and make sure the page is there.
     func didShow() {
         unloadTask?.cancel()
         unloadTask = nil
         loadIfNeeded()
     }
 
-    /// Chats went out of view: release the web page if it stays hidden.
+    /// The claude.ai side went out of view: release the web page if it stays hidden.
     func didHide() {
         unloadTask?.cancel()
         unloadTask = Task { [weak self] in
@@ -104,7 +104,7 @@ public final class ClaudeWebController: NSObject {
         isLoading = false
     }
 
-    /// Load claude.ai the first time the Chats section is shown.
+    /// Load claude.ai the first time its side of the Claude section is shown.
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
@@ -114,6 +114,35 @@ public final class ClaudeWebController: NSObject {
     public func startNewChat() {
         hasLoaded = true
         webView.load(URLRequest(url: Self.newChat))
+    }
+
+    /// For "Continue on Mac": the text you selected in the chat, or else the
+    /// conversation on screen, quoted. It's read from the page you're looking
+    /// at (in a separate script world the page can't interfere with); nothing
+    /// is fetched from claude.ai.
+    func chatText(limit: Int = 12_000) async -> String? {
+        let script = """
+            const selected = (window.getSelection ? window.getSelection().toString() : '').trim();
+            if (selected) return { selection: true, title: document.title, text: selected };
+            const main = document.querySelector('main') || document.body;
+            return { selection: false, title: document.title, text: (main.innerText || '').trim() };
+            """
+        guard let result = try? await webView.callAsyncJavaScript(script, contentWorld: .defaultClient) as? [String: Any],
+              let text = result["text"] as? String, !text.isEmpty else { return nil }
+        let title = (result["title"] as? String ?? "")
+            .replacingOccurrences(of: " - Claude", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return Self.handoffText(text, title: title == "Claude" ? "" : title,
+                                isSelection: result["selection"] as? Bool ?? false, limit: limit)
+    }
+
+    /// Quote chat text for a new conversation on the Mac.
+    nonisolated static func handoffText(_ text: String, title: String, isSelection: Bool, limit: Int = 12_000) -> String {
+        let clipped = text.count > limit ? "…" + text.suffix(limit) : Substring(text)
+        let quoted = clipped.split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n")
+        let what = isSelection ? "Here's part of a chat I had on claude.ai" : "Here's a chat I had on claude.ai"
+        let named = title.isEmpty ? "" : " (\"\(title)\")"
+        return "\(what)\(named):\n\n\(quoted)\n\n"
     }
 
     func goBack() { webView.goBack() }

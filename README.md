@@ -63,7 +63,7 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | Path | What |
 |---|---|
 | `AgentXKit/Sources/AgentXKit/App` | Scenes (window, menu bar, settings), dashboard, `AppModel` |
-| `AgentXKit/Sources/AgentXKit/Chats` | Chats section: claude.ai in a web view, chat-only |
+| `AgentXKit/Sources/AgentXKit/Claude` | Claude section: Mac conversations and claude.ai (web view, chat-only) |
 | `AgentXKit/Sources/AgentXKit/Sessions` | Session list, conversation view, tool cards, approvals, phone sync |
 | `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models, `AppChannel` (installed vs Dev) |
 | `AgentXKit/Sources/AgentXKit/Security` | Path guard, activity log, kill switch, link tokens, signature checks, Settings → Security |
@@ -74,9 +74,25 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `AgentXKit/Sources/AgentXShared` | The widget snapshot format, shared by the app and the widgets |
 | `project.yml` | XcodeGen spec (the `.xcodeproj` is generated, not committed) |
 
-### Chats
+### Claude: on this Mac, or claude.ai
 
-Regular Claude chats have no public API, so the Chats section runs claude.ai itself. It's the same account and the same conversations as the Claude app on your phone: send a chat there and it's here (⌘R pulls it in right away). AgentX only hosts the page. It doesn't read or automate it. It keeps the section chat-only by hiding claude.ai's Code links, and it sends any Code page to Sessions.
+The **Claude** section is the one place to talk to Claude. A switch at the top picks the side, and AgentX remembers the last one you used. **New Chat** (⇧⌘N) starts a chat on that side.
+
+| | **On this Mac** | **claude.ai** |
+|---|---|---|
+| What it is | Claude Code with AgentX's Mac tools | claude.ai itself, in a web view |
+| Can act on your Mac | Yes (see the table below) | No: it runs in Anthropic's cloud |
+| History | Saved on your Mac as Claude Code sessions | Your claude.ai account, synced with the Claude app on your phone |
+| Approvals and security policy | Yes | Handled by claude.ai |
+| Also reachable from | ⌥Space launcher | Your phone and the web |
+
+The two histories stay separate: claude.ai's conversations aren't available to apps, and AgentX doesn't use unofficial claude.ai APIs. Instead, you carry a chat across:
+
+- **Continue on Mac** (claude.ai side): brings the chat, or just the text you selected in it, into a new conversation on this Mac, where Claude can use your Mac. It lands in the message box, and nothing is sent until you press Send. The text is read from the page you're looking at; nothing is fetched. Because a chat can quote web pages or files, that conversation starts as having read untrusted content (see [SECURITY.md](SECURITY.md)).
+- **Continue in claude.ai** (⋯ menu of a Mac conversation): copies the conversation as Markdown and opens a new claude.ai chat to paste it into.
+- **Continue on phone** works for Mac conversations too, through Remote Control (see below). On your phone it continues as a plain Claude Code session, and AgentX's Mac tools stay on the Mac.
+
+On the claude.ai side, a chat you send from your phone appears here; ⌘R pulls it in right away. AgentX only hosts the page. Apart from Continue on Mac, which reads the text on screen when you ask, it doesn't read or automate it. It keeps the side chat-only by hiding claude.ai's Code links, and it sends any Code page to Sessions. Old `agentx://chats` and `agentx://assistant` links open the matching side.
 
 To sign in, enter your email in the email field. Google doesn't allow its sign-in button inside apps, but a Google account can sign in with its email address: Claude sends a code or link. If you get a link, use **More › Open a Sign-in Link…** to open it inside AgentX. You only need to sign in once.
 
@@ -84,9 +100,9 @@ To sign in, enter your email in the email field. Google doesn't allow its sign-i
 
 **Continue on phone** runs the session in the Terminal tab with Claude Code's Remote Control (`claude --resume <id> --remote-control`). The session then appears in the Claude app on your phone under **Code**. Messages you send from your phone run on your Mac and show up in AgentX. The first time, answer Remote Control's one-time prompt in that terminal. Remote Control needs a Pro or higher plan, and it doesn't work with API keys.
 
-### Assistant and launcher
+### Mac tools and the launcher
 
-The **Assistant** section and the **⌥Space launcher** talk to Claude with Mac tools:
+Conversations **on this Mac** (in the Claude section) and the **⌥Space launcher** talk to Claude with Mac tools:
 
 | Area | What it can do |
 |---|---|
@@ -149,7 +165,7 @@ The System section reads the same kernel counters Activity Monitor uses: CPU tic
 
 AgentX keeps idle costs low and gives memory back when it isn't needed:
 - A Claude Code process uses about 300 MB. One that has been idle for 10 minutes is closed, and your next message resumes the session.
-- The Chats web page is released after 15 minutes out of view. Your sign-in is kept.
+- The claude.ai page is released after 15 minutes out of view. Your sign-in is kept.
 - Only the 6 most recently viewed transcripts stay in memory. Tool output over 40 KB keeps its first 20,000 characters in memory (the full text stays in the session file).
 - When another app adds to a session you're viewing, only the new messages are fetched.
 - Messages from agent-core are parsed with `JSONSerialization`, off the main thread. That's 4.6× faster than the earlier `Codable` path on an 11 MB transcript.
@@ -189,6 +205,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M4: automations (scheduled Claude tasks with notifications)
 - [x] M5: plan-usage meter, desktop widgets
 - [x] M6: installable app next to AgentX Dev, security policy (untrusted content, protected files, kill switch, activity log)
+- [x] One Claude section: Mac conversations and claude.ai side by side, with hand-off both ways
 - [ ] M7: memory and context (what's on screen, selection, browser tab)
 - [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center
 - [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)

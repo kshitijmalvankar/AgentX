@@ -38,6 +38,8 @@ enum RouteToken {
 public enum URLRoute: Equatable, Sendable {
     /// Show a section of the main window.
     case section(SidebarItem)
+    /// Show one side of the Claude section (agentx://chats, agentx://assistant).
+    case claude(ClaudeMode)
     /// Open the launcher, optionally with text typed in (never sent).
     case launcher(prefill: String?)
     /// Show the approvals waiting for you.
@@ -50,7 +52,7 @@ public enum URLRoute: Equatable, Sendable {
     public var needsToken: Bool {
         switch self {
         case .runAutomation, .stopEverything: true
-        case .section, .launcher, .approvals: false
+        case .section, .claude, .launcher, .approvals: false
         }
     }
 
@@ -80,6 +82,11 @@ public enum URLRoute: Equatable, Sendable {
             route = .runAutomation(id)
         case "stop":
             route = .stopEverything
+        // The old Chats and Assistant sections are now the two sides of Claude.
+        case "chats":
+            route = .claude(.web)
+        case "assistant":
+            route = .claude(.mac)
         default:
             guard let item = SidebarItem(rawValue: host) else { return .failure(.unknown) }
             route = .section(item)

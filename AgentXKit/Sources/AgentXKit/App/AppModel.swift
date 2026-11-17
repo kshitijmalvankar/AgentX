@@ -3,17 +3,16 @@ import Foundation
 import Observation
 
 public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case dashboard, chats, sessions, github, assistant, system, automations
+    case dashboard, claude, sessions, github, system, automations
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
         case .dashboard: "Dashboard"
-        case .chats: "Chats"
+        case .claude: "Claude"
         case .sessions: "Sessions"
         case .github: "GitHub"
-        case .assistant: "Assistant"
         case .system: "System"
         case .automations: "Automations"
         }
@@ -22,14 +21,38 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
     public var symbol: String {
         switch self {
         case .dashboard: "square.grid.2x2"
-        case .chats: "bubble.left.and.bubble.right"
+        case .claude: "bubble.left.and.text.bubble.right"
         case .sessions: "terminal"
         case .github: "chevron.left.forwardslash.chevron.right"
-        case .assistant: "sparkles"
         case .system: "gauge.with.dots.needle.50percent"
         case .automations: "clock.arrow.2.circlepath"
         }
     }
+}
+
+/// The two sides of the Claude section.
+public enum ClaudeMode: String, CaseIterable, Identifiable, Sendable {
+    /// Claude Code on this Mac, with AgentX's Mac tools (the assistant).
+    case mac
+    /// claude.ai, the same chats as the Claude app on your phone.
+    case web
+
+    public var id: String { rawValue }
+    public var title: String { self == .mac ? "On this Mac" : "claude.ai" }
+    public var symbol: String { self == .mac ? "desktopcomputer" : "cloud" }
+    public var explanation: String {
+        self == .mac
+            ? "Can act on your Mac: Calendar, Reminders, files, apps, settings, Mail, Notes and Messages."
+            : "Your claude.ai chats, synced with the Claude app on your phone. Can't act on your Mac."
+    }
+}
+
+/// Text carried from a claude.ai chat into a new conversation on this Mac.
+public struct MacHandoff: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    public let text: String
+    /// Why the new conversation starts as having read untrusted content.
+    public let taint: String
 }
 
 /// The app's root state, shared by the main window, the menu bar and Settings.
@@ -58,6 +81,14 @@ public final class AppModel {
     public var pendingNewSessionFolder: String?
 
     public var sidebar: SidebarItem? = .dashboard
+    /// Which side of the Claude section is showing (remembered between launches).
+    public var claudeMode: ClaudeMode = ClaudeMode(rawValue: UserDefaults.standard.string(forKey: "claudeMode") ?? "") ?? .mac {
+        didSet { UserDefaults.standard.set(claudeMode.rawValue, forKey: "claudeMode") }
+    }
+    /// Text waiting in a new Mac conversation's composer (from "Continue on Mac").
+    public var macHandoff: MacHandoff?
+    /// Set after "Continue in claude.ai" copied a conversation, so the web side can say "paste it".
+    public var webPasteHint = false
     public private(set) var account: AccountSnapshot?
     public private(set) var accountError: String?
     public private(set) var isLoadingAccount = false
@@ -219,14 +250,15 @@ public final class AppModel {
         _ = try? await client.call("tools.register", ["tools": MacToolbox.definitions])
     }
 
-    /// Ask the assistant something (Assistant section and launcher).
+    /// Ask the assistant something (the Claude section's Mac side and the launcher).
+    /// `taint` starts a new conversation as having read untrusted content.
     @discardableResult
-    public func askAssistant(_ prompt: String, in conversation: Conversation? = nil) async -> Conversation {
+    public func askAssistant(_ prompt: String, in conversation: Conversation? = nil, taint: String? = nil) async -> Conversation {
         if let conversation {
             await sessions.send(prompt, in: conversation)
             return conversation
         }
-        return await sessions.startAssistant(prompt: prompt)
+        return await sessions.startAssistant(prompt: prompt, taint: taint)
     }
 
     public func reloadAccount() async {
@@ -280,10 +312,56 @@ public final class AppModel {
         Task { await sessions.startNew(cwd: NSHomeDirectory(), prompt: prompt, model: nil, mode: .default) }
     }
 
-    /// Show Chats and start a new conversation on claude.ai.
+    /// Show the Claude section and start a new chat on whichever side you used last.
+    public func newChat() {
+        sidebar = .claude
+        switch claudeMode {
+        case .mac: sessions.selectAssistant(nil)
+        case .web: ClaudeWebController.shared.startNewChat()
+        }
+    }
+
+    /// Show claude.ai and start a new chat there.
     public func startNewChat() {
-        sidebar = .chats
+        sidebar = .claude
+        claudeMode = .web
         ClaudeWebController.shared.startNewChat()
+    }
+
+    /// Bring text from a claude.ai chat into a new conversation on this Mac.
+    /// It lands in the composer (nothing is sent until you do), and the
+    /// conversation starts as having read untrusted content: the chat may
+    /// quote web pages or files.
+    public func continueOnMac(_ text: String) {
+        sidebar = .claude
+        claudeMode = .mac
+        sessions.selectAssistant(nil)
+        macHandoff = MacHandoff(text: text, taint: "text carried over from claude.ai")
+    }
+
+    /// Copy a Mac conversation for pasting into a new claude.ai chat.
+    public func continueInClaudeAI(_ c: Conversation) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(Self.handoffMarkdown(for: c), forType: .string)
+        startNewChat()
+        webPasteHint = true
+    }
+
+    /// A conversation as plain Markdown: your messages and Claude's replies (no tool details).
+    static func handoffMarkdown(for c: Conversation, limit: Int = 20_000) -> String {
+        var parts: [String] = []
+        for item in c.items {
+            switch item.kind {
+            case .user(let text): parts.append("**Me:** \(text)")
+            case .assistant(let text) where !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                parts.append("**Claude (on my Mac):** \(text)")
+            default: break
+            }
+        }
+        var body = parts.joined(separator: "\n\n")
+        if body.count > limit { body = "…" + body.suffix(limit) }
+        return "Continuing a conversation I had with Claude on my Mac (\(c.title)):\n\n\(body)\n\n"
     }
 
     /// agentx://dashboard, agentx://launcher?q=…, agentx://run/<id>?t=… (from
@@ -306,6 +384,10 @@ public final class AppModel {
         case .section(let item):
             sidebar = item
             showMainWindow()
+        case .claude(let mode):
+            sidebar = .claude
+            claudeMode = mode
+            showMainWindow()
         case .launcher(let prefill):
             LauncherController.shared.show(prefill: prefill)
         case .approvals:
@@ -323,7 +405,8 @@ public final class AppModel {
     public func openSession(_ key: String) {
         let c = sessions.conversations[key] ?? sessions.conversations.values.first { $0.sessionId == key }
         if c?.kind == .assistant || sessions.assistantSessions.contains(where: { $0.sessionId == key }) {
-            sidebar = .assistant
+            sidebar = .claude
+            claudeMode = .mac
             sessions.selectAssistant(key)
         } else {
             sidebar = .sessions

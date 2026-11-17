@@ -37,7 +37,7 @@ struct ConversationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(conversation.title)
-        .navigationSubtitle(conversation.cwd.abbreviatingHome)
+        .navigationSubtitle(conversation.kind == .assistant ? "On this Mac" : conversation.cwd.abbreviatingHome)
     }
 
     // MARK: Header
@@ -70,7 +70,9 @@ struct ConversationView: View {
             }
             .buttonStyle(.borderless)
             .help(phoneSyncOn ? "Phone sync is on: open the Claude app on your phone, then Code."
-                              : "Continue on phone: run this session with Remote Control so you can keep going from the Claude app.")
+                              : conversation.kind == .assistant
+                                ? "Continue on phone: run this conversation with Remote Control so you can keep going from the Claude app (Code). On your phone it's a plain Claude Code session: AgentX's Mac tools stay on the Mac."
+                                : "Continue on phone: run this session with Remote Control so you can keep going from the Claude app.")
 
             Picker("View", selection: $tab) {
                 ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
@@ -90,14 +92,21 @@ struct ConversationView: View {
                         }
                     }
                 }
-                Menu("Permissions: \(conversation.permissionMode.shortLabel)") {
-                    ForEach(PermissionModeOption.allCases) { mode in
-                        Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
-                            checked(mode == conversation.permissionMode, mode.label)
+                // Coding permission modes (plan, accept edits…) don't apply to Mac conversations.
+                if conversation.kind == .coding {
+                    Menu("Permissions: \(conversation.permissionMode.shortLabel)") {
+                        ForEach(PermissionModeOption.allCases) { mode in
+                            Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
+                                checked(mode == conversation.permissionMode, mode.label)
+                            }
                         }
                     }
                 }
                 Divider()
+                if conversation.kind == .assistant {
+                    Button("Continue in claude.ai", systemImage: "cloud") { model.continueInClaudeAI(conversation) }
+                        .help("Copy this conversation and open a new claude.ai chat to paste it into (claude.ai can't act on your Mac).")
+                }
                 Button(phoneSyncOn ? "Show Phone Sync" : "Continue on Phone", systemImage: "iphone") {
                     if phoneSyncOn { tab = .terminal } else { startPhoneSync() }
                 }
@@ -125,6 +134,10 @@ struct ConversationView: View {
 
     /// "AgentX · main · Opus": project, branch (not a detached HEAD), and any non-default settings.
     private var subtitle: String {
+        if conversation.kind == .assistant {
+            let parts = ["On this Mac · Calendar, files, apps, Mail and more"] + (conversation.model != nil ? [modelLabel] : [])
+            return parts.joined(separator: " · ")
+        }
         var parts = [conversation.projectName]
         if let branch = conversation.gitBranch, !branch.isEmpty, branch != "HEAD" { parts.append(branch) }
         if conversation.model != nil { parts.append(modelLabel) }

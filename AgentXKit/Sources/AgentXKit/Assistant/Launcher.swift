@@ -108,7 +108,8 @@ final class LauncherController {
 
     func openInApp() {
         hide()
-        model.sidebar = .assistant
+        model.sidebar = .claude
+        model.claudeMode = .mac
         model.sessions.selectAssistant(conversation?.sessionId ?? conversationID)
         model.showMainWindow()
     }

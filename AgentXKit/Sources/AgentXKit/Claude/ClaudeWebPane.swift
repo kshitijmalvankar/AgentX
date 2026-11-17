@@ -1,10 +1,14 @@
 import SwiftUI
 import WebKit
 
-/// Chats section: your regular Claude chats (claude.ai), the same ones as on your phone.
-struct ChatsView: View {
+/// The Claude section's claude.ai side: your regular Claude chats, the same
+/// ones as on your phone. It can't act on your Mac; "Continue on Mac" carries
+/// a chat over to the other side.
+struct ClaudeWebPane: View {
+    @Environment(AppModel.self) private var model
     @State private var web = ClaudeWebController.shared
     @State private var showLinkSheet = false
+    @State private var handoffError: String?
 
     var body: some View {
         WebViewHost(webView: web.webView)
@@ -14,9 +18,25 @@ struct ChatsView: View {
             .overlay(alignment: .bottomTrailing) {
                 if web.isLoading { ProgressView().controlSize(.small).padding(12) }
             }
+            .overlay(alignment: .bottom) {
+                if model.webPasteHint {
+                    PasteHint { model.webPasteHint = false }
+                }
+            }
+            .task(id: model.webPasteHint) {
+                guard model.webPasteHint else { return }
+                try? await Task.sleep(for: .seconds(30))
+                model.webPasteHint = false
+            }
             .onAppear { web.didShow() }
-            .onDisappear { web.didHide() }
-            .navigationTitle("Chats")
+            .onDisappear {
+                web.didHide()
+                model.webPasteHint = false
+            }
+            .navigationSubtitle("Synced with your phone · can't act on your Mac")
+            .alert("Nothing to bring over", isPresented: .constant(handoffError != nil), presenting: handoffError) { _ in
+                Button("OK") { handoffError = nil }
+            } message: { Text($0) }
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
                     Button("Back", systemImage: "chevron.left") { web.goBack() }
@@ -28,8 +48,8 @@ struct ChatsView: View {
                     Button("Reload", systemImage: "arrow.clockwise") { web.reload() }
                         .keyboardShortcut("r")
                         .help("Reload (⌘R) to pull in messages you just sent from your phone")
-                    Button("New Chat", systemImage: "square.and.pencil") { web.startNewChat() }
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
+                    Button("Continue on Mac", systemImage: "desktopcomputer") { Task { await continueOnMac() } }
+                        .help("Bring this chat (or the text you've selected in it) to a new conversation on this Mac, where Claude can use your Mac. Nothing is sent until you press Send.")
                     Menu("More", systemImage: "ellipsis.circle") {
                         Button("Open in Browser") { web.openInBrowser() }
                         Button("Open a Sign-in Link…") { showLinkSheet = true }
@@ -37,6 +57,35 @@ struct ChatsView: View {
                 }
             }
             .sheet(isPresented: $showLinkSheet) { SignInLinkSheet(web: web) }
+    }
+
+    private func continueOnMac() async {
+        guard let text = await web.chatText() else {
+            handoffError = "Open a chat (or select some of its text) first, then choose Continue on Mac."
+            return
+        }
+        model.continueOnMac(text)
+    }
+}
+
+/// After "Continue in claude.ai": the conversation is on the clipboard, ready to paste.
+private struct PasteHint: View {
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.on.clipboard").foregroundStyle(.tint)
+            Text("Your Mac conversation is on the clipboard. Click the message box and paste (⌘V) to continue here.")
+                .font(.callout)
+            Spacer(minLength: 0)
+            Button("Dismiss", systemImage: "xmark", action: dismiss)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .agentCard)
+        .frame(maxWidth: 560)
+        .padding(.bottom, 90)
     }
 }
 

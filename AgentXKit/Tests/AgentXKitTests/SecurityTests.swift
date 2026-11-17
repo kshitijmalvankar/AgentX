@@ -82,6 +82,12 @@ struct URLRouteTests {
         #expect(parse("agentx://launcher") == .success(.launcher(prefill: nil)))
         #expect(parse("agentx://ask?q=summarize%20this") == .success(.launcher(prefill: "summarize this")))
         #expect(parse("agentx://approvals") == .success(.approvals))
+        #expect(parse("agentx://claude") == .success(.section(.claude)))
+    }
+
+    @Test func oldChatsAndAssistantLinksOpenTheClaudeSection() {
+        #expect(parse("agentx://chats") == .success(.claude(.web)))
+        #expect(parse("agentx://assistant") == .success(.claude(.mac)))
     }
 
     @Test func prefillIsCapped() throws {

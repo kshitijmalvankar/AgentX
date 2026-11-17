@@ -92,10 +92,9 @@ struct RootView: View {
     @ViewBuilder private var detail: some View {
         switch model.sidebar ?? .dashboard {
         case .dashboard: DashboardView()
-        case .chats: ChatsView()
+        case .claude: ClaudeView()
         case .sessions: SessionsView()
         case .github: GitHubView()
-        case .assistant: AssistantView()
         case .system: SystemView()
         case .automations: AutomationsView()
         }
@@ -111,7 +110,7 @@ private struct Sidebar: View {
             Section {
                 ForEach(SidebarItem.allCases) { item in
                     Label(item.title, systemImage: item.symbol)
-                        .badge(item == .sessions ? model.sessions.approvals.count : 0)
+                        .badge(badge(for: item))
                         .tag(item)
                 }
             }
@@ -149,6 +148,15 @@ private struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) { EngineStatusFooter().padding(10) }
+    }
+
+    /// Approvals waiting: coding sessions on Sessions, Mac conversations on Claude.
+    private func badge(for item: SidebarItem) -> Int {
+        switch item {
+        case .sessions: model.sessions.approvalCount(kind: .coding)
+        case .claude: model.sessions.approvalCount(kind: .assistant)
+        default: 0
+        }
     }
 }
 
