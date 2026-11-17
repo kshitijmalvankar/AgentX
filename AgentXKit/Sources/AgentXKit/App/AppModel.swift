@@ -74,9 +74,11 @@ public final class AppModel {
     /// Your Claude plan's usage (session and weekly limits).
     public let usage: UsageStore
     /// What Claude and AgentX did that changed something, and every security decision.
-    public let activity = ActivityLog()
+    public let activity: ActivityLog
     /// Today's events and reminders (the dashboard's Today card).
     public let today = TodayAgenda()
+    /// The encrypted link to the AgentX iPhone app (Settings → iPhone).
+    public let phone: PhoneLink
     /// Anthropic's signature on the Claude Code engine binary (nil while checking).
     public private(set) var engineSignature: CodeSignature.Status?
     /// Folder to preselect the next time the New Session sheet opens.
@@ -113,7 +115,10 @@ public final class AppModel {
         NSApp.activate()
     }
 
-    init() {
+    /// Tests pass their own activity log and phone link (temporary files, no Keychain).
+    init(activity: ActivityLog = ActivityLog(), phone: PhoneLink = PhoneLink()) {
+        self.activity = activity
+        self.phone = phone
         sessions = SessionStore(client: client)
         usage = UsageStore(client: client)
         client.notificationHandler = { [weak self] method, params in
@@ -176,6 +181,7 @@ public final class AppModel {
         _ = await (tools, list, acct)
         usage.start()
         automations.start()
+        phone.attach(self)
         let writer = WidgetSnapshotWriter(model: self)
         widgetWriter = writer
         writer.start()
