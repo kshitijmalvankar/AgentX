@@ -57,6 +57,8 @@ enum ToolPresentation {
         "memory_search": "Checked memory for",
         "memory_read": "Read the memory",
         "memory_forget": "Forgot",
+        "context_now": "Looked at what you're working on",
+        "screen_look": "Looked at your screen",
     ]
 
     /// A tool call as a short sentence: what Claude did, and to what.

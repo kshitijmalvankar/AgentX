@@ -174,6 +174,7 @@ public final class AppModel {
         NotificationManager.shared.configure(store: sessions)
         AssistantWorkspace.prepare()
         memory.startWatching()
+        FrontmostTracker.shared.start()
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }
@@ -266,12 +267,13 @@ public final class AppModel {
     /// Ask the assistant something (the Mac side of Chats and the launcher).
     /// `taint` starts a new conversation as having read untrusted content.
     @discardableResult
-    public func askAssistant(_ prompt: String, in conversation: Conversation? = nil, taint: String? = nil) async -> Conversation {
+    public func askAssistant(_ prompt: String, in conversation: Conversation? = nil, taint: String? = nil,
+                             images: [JSONValue] = []) async -> Conversation {
         if let conversation {
-            await sessions.send(prompt, in: conversation)
+            await sessions.send(prompt, in: conversation, images: images, taint: taint)
             return conversation
         }
-        return await sessions.startAssistant(prompt: prompt, taint: taint)
+        return await sessions.startAssistant(prompt: prompt, taint: taint, images: images)
     }
 
     public func reloadAccount() async {

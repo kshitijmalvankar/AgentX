@@ -73,7 +73,9 @@ struct AutomationAccessTests {
         #expect(AutomationTarget.of(script: "tell application \"Messages\" to send x") == .messages)
         #expect(AutomationTarget.of(script: "tell application \"System Events\" to tell appearance preferences to set dark mode to true") == .systemEvents)
         #expect(AutomationTarget.of(script: "set volume output volume 30") == nil, "no app to ask about")
-        #expect(AutomationTarget.of(script: "tell application \"Safari\" to quit") == nil)
+        #expect(AutomationTarget.of(script: "tell application \"Safari\" to get URL of current tab of front window") == .safari)
+        #expect(AutomationTarget.of(script: "tell application \"Google Chrome\" to get URL of active tab of front window") == .chrome)
+        #expect(AutomationTarget.of(script: "tell application \"Music\" to play") == nil)
     }
 
     @Test func remindersCarryTheirNotes() {

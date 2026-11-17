@@ -133,6 +133,15 @@ Tell the assistant "remember that I prefer short replies" (or it notices somethi
 - Edit the files yourself if you like; AgentX picks up the changes. Deleting moves a file to `Memory/.trash`.
 - Claude won't save passwords, keys, card or ID numbers (they're refused), and in a conversation that has read web pages or email, saving a memory asks you first.
 
+### What's on your screen
+
+When you press ⌥Space, AgentX looks at the app you were using: its window or document, your selected text (never a password field), the browser tab (Safari, Chrome, Edge, Brave, Arc, Vivaldi), or what's selected in Finder. Each shows as a chip under the launcher's field; remove any you don't want sent. So "summarize this" or "reply to this" just works.
+
+- **Look at Window** attaches a picture of that app's window to your next message, only when you click it. Claude can also ask to look (`screen_look`), and you approve each time.
+- In a conversation, Claude can check what you're working on with `context_now`. Neither tool is available to scheduled runs.
+- Screen context counts as untrusted content: a conversation that gets it asks before anything that could send data out.
+- **Settings → Assistant → What's on your screen** chooses: include it, show it but include only when you click, or don't look. It also shows the two macOS permissions this uses, Accessibility (window titles and selections) and Screen Recording (pictures), and **Permissions** covers each browser and Finder.
+
 ### iPhone companion
 
 The AgentX iPhone app watches and controls your Mac:
@@ -236,7 +245,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M6: installable app next to AgentX Dev, security policy (untrusted content, protected files, kill switch, activity log)
 - [x] One Chats section: Mac conversations and claude.ai side by side, with hand-off both ways
 - [x] iPhone companion: monitor, approve with Face ID, Stop Everything, message Claude on your Mac (encrypted link, QR pairing)
-- [ ] M7: memory and context (what's on screen, selection, browser tab)
+- [x] M7: memory (Settings → Memory) and context (what's on screen, selection, browser tab, Look at Window)
 - [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center
 - [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)
 - [ ] M10: long-running tasks with check-ins

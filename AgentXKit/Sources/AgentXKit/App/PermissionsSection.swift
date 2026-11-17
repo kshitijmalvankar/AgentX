@@ -16,7 +16,7 @@ struct PermissionsSection: View {
         Section {
             calendarRow("Calendar", status: calendar, pane: "Privacy_Calendars")
             calendarRow("Reminders", status: reminders, pane: "Privacy_Reminders")
-            ForEach(AutomationTarget.allCases) { target in automationRow(target) }
+            ForEach(AutomationTarget.allCases.filter(\.isInstalled)) { target in automationRow(target) }
             if let message {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
@@ -37,7 +37,7 @@ struct PermissionsSection: View {
         .confirmationDialog("Reset AgentX's Automation permissions?", isPresented: $confirmReset) {
             Button("Reset") { Task { await reset() } }
         } message: {
-            Text("macOS forgets whether AgentX may control Mail, Notes, Messages and System Events. Each asks again the next time it's needed (or when you click Allow here). Nothing else changes.")
+            Text("macOS forgets whether AgentX may control Mail, Notes, Messages, System Events, Finder and your browsers. Each asks again the next time it's needed (or when you click Allow here). Nothing else changes.")
         }
     }
 
@@ -105,7 +105,7 @@ struct PermissionsSection: View {
     private func refresh() async {
         calendar = CalendarService.access(to: .event)
         reminders = CalendarService.access(to: .reminder)
-        for target in AutomationTarget.allCases {
+        for target in AutomationTarget.allCases where target.isInstalled {
             automation[target] = await AutomationAccess.status(of: target)
         }
     }

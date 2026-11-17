@@ -346,15 +346,16 @@ public final class SessionStore {
     /// Start a new assistant conversation (Mac tools on). `taint` starts it as
     /// having read untrusted content (e.g. text carried over from claude.ai).
     @discardableResult
-    public func startAssistant(prompt: String, taint: String? = nil) async -> Conversation {
+    public func startAssistant(prompt: String, taint: String? = nil, images: [JSONValue] = []) async -> Conversation {
         AssistantWorkspace.prepare()
+        let title = ScreenContext.displayText(prompt).replacingOccurrences(of: "\n\n(with what was on screen)", with: "")
         let c = Conversation(id: "new-\(UUID().uuidString)", kind: .assistant, sessionId: nil,
-                             cwd: AssistantWorkspace.path, title: String(prompt.prefix(80)))
+                             cwd: AssistantWorkspace.path, title: String(title.prefix(80)))
         c.taint = taint
         c.historyLoaded = true
         conversations[c.id] = c
         assistantSelectedKey = c.id
-        await send(prompt, in: c)
+        await send(prompt, in: c, images: images, taint: taint)
         return c
     }
 
@@ -363,10 +364,14 @@ public final class SessionStore {
     /// AgentX always continues the session itself, never a fork, and always
     /// from its newest message, whichever app wrote it: an idle process that
     /// fell behind (another app continued the session) is restarted first.
-    public func send(_ text: String, in c: Conversation) async {
+    /// `images`: pictures sent with the message ({mediaType, data}). `taint`: the
+    /// message carries untrusted content (what's on screen), so the conversation
+    /// is guarded from here on.
+    public func send(_ text: String, in c: Conversation, images: [JSONValue] = [], taint: String? = nil) async {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         c.error = nil
+        if let taint, c.taint == nil { c.taint = taint }
         if let handle = c.liveHandle, c.liveState == .idle {
             let stale = (try? await client.call("session.isStale", ["handle": .string(handle)]))?["stale"]?.bool ?? false
             if stale {
@@ -379,10 +384,11 @@ public final class SessionStore {
         } else if !c.isLive, c.sessionId != nil {
             await reloadHistory(c)
         }
-        c.addLocalPrompt(text)
+        c.addLocalPrompt(images.isEmpty ? text : text + "\n\n(with a picture of the window)")
         do {
             if let handle = c.liveHandle {
-                try await client.call("session.send", ["handle": .string(handle), "text": .string(text)])
+                try await client.call("session.send", ["handle": .string(handle), "text": .string(text),
+                                                       "images": .array(images), "taint": .optional(taint)])
                 c.liveState = .running
             } else {
                 await beforeStart?()
@@ -397,6 +403,7 @@ public final class SessionStore {
                     "allowedTools": c.extraAllowedTools.isEmpty ? .null : .array(c.extraAllowedTools.map(JSONValue.string)),
                     "cwd": .string(c.cwd),
                     "prompt": .string(text),
+                    "images": .array(images),
                     "resume": .optional(c.sessionId),
                     "model": .optional(c.model),
                     "permissionMode": .string(c.permissionMode.rawValue),

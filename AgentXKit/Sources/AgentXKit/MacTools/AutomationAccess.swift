@@ -9,6 +9,13 @@ public enum AutomationTarget: String, CaseIterable, Identifiable, Sendable {
     case notes = "com.apple.Notes"
     case messages = "com.apple.MobileSMS"
     case systemEvents = "com.apple.systemevents"
+    case finder = "com.apple.finder"
+    case safari = "com.apple.Safari"
+    case chrome = "com.google.Chrome"
+    case edge = "com.microsoft.edgemac"
+    case brave = "com.brave.Browser"
+    case arc = "company.thebrowser.Browser"
+    case vivaldi = "com.vivaldi.Vivaldi"
 
     public var id: String { rawValue }
 
@@ -19,7 +26,19 @@ public enum AutomationTarget: String, CaseIterable, Identifiable, Sendable {
         case .notes: "Notes"
         case .messages: "Messages"
         case .systemEvents: "System Events"
+        case .finder: "Finder"
+        case .safari: "Safari"
+        case .chrome: "Google Chrome"
+        case .edge: "Microsoft Edge"
+        case .brave: "Brave Browser"
+        case .arc: "Arc"
+        case .vivaldi: "Vivaldi"
         }
+    }
+
+    /// On this Mac (Settings only lists apps you have).
+    public var isInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: rawValue) != nil
     }
 
     public var purpose: String {
@@ -28,6 +47,8 @@ public enum AutomationTarget: String, CaseIterable, Identifiable, Sendable {
         case .notes: "Search and create notes"
         case .messages: "Send iMessages"
         case .systemEvents: "Dark mode and volume"
+        case .finder: "What's selected in Finder, when you open the launcher"
+        case .safari, .chrome, .edge, .brave, .arc, .vivaldi: "The current tab's address and title, when you open the launcher"
         }
     }
 

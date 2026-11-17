@@ -17,7 +17,7 @@ struct MacToolboxTests {
     @Test func riskyActionsAskFirst() {
         let ask = Set(MacToolbox.tools.filter { $0.risk == .ask }.map(\.name))
         #expect(ask == ["reminders_complete", "files_move", "files_trash", "apps_quit", "shortcuts_run",
-                        "clipboard_read", "mail_send", "messages_send", "memory_forget"])
+                        "clipboard_read", "mail_send", "messages_send", "memory_forget", "screen_look"])
         #expect(MacToolbox.tool(named: "mail_draft")?.risk == .create)
         #expect(MacToolbox.tool(named: "calendar_events")?.risk == .read)
     }

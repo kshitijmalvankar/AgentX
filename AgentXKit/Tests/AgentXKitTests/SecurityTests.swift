@@ -183,7 +183,9 @@ struct SecuritySettingsTests {
     @Test func untrustedToolsAreMarked() throws {
         let defs = try #require(MacToolbox.definitions.array)
         let untrusted = Set(defs.filter { $0["untrusted"]?.string != nil }.compactMap { $0["name"]?.string })
-        #expect(untrusted == ["mail_recent", "notes_search", "calendar_events", "clipboard_read"])
+        #expect(untrusted == ["mail_recent", "notes_search", "calendar_events", "clipboard_read", "context_now", "screen_look"])
+        let attendedOnly = Set(defs.filter { $0["attendedOnly"]?.bool == true }.compactMap { $0["name"]?.string })
+        #expect(attendedOnly == ["context_now", "screen_look"], "screen tools never reach scheduled or triggered runs")
     }
 
     @Test func devIsTheDefaultChannelOutsideTheApp() {

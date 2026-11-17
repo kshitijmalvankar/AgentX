@@ -81,7 +81,7 @@ public struct TranscriptBuilder: Sendable {
 
     /// Add text the user just typed (shown immediately, before Claude echoes anything).
     public mutating func addLocalUserText(_ text: String) {
-        items.append(TranscriptItem(id: UUID().uuidString, kind: .user(text)))
+        items.append(TranscriptItem(id: UUID().uuidString, kind: .user(ScreenContext.displayText(text))))
     }
 
     public mutating func addNotice(_ text: String, isError: Bool) {
@@ -142,7 +142,8 @@ public struct TranscriptBuilder: Sendable {
             if !out.isEmpty { append(.notice(out, isError: false), id: id) }
             return
         }
-        append(.user(trimmed), id: id)
+        // Screen context sent with a message shows as a short note, not the whole block.
+        append(.user(ScreenContext.displayText(trimmed)), id: id)
     }
 
     private mutating func attachResult(_ block: JSONValue) {
