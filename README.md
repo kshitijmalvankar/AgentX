@@ -1,14 +1,40 @@
 # AgentX
 
-A native macOS command center for Claude. It has your regular Claude chats (synced with the Claude app on your phone), plus Claude Code sessions you can run, approve and continue from your phone. Still to come: a Mac assistant, a system dashboard and automations. Powered by the Claude Agent SDK, using the Claude Code login on this Mac.
+A native macOS command center for Claude: your regular Claude chats (synced with the Claude app on your phone), Claude Code sessions you can run, approve and continue from your phone, a Mac assistant with a ⌥Space launcher, a system dashboard, GitHub, automations and desktop widgets. Powered by the Claude Agent SDK, using the Claude Code login on this Mac.
 
-## Run it
+## Install it, and keep developing
+
+There are two copies of AgentX, and they run side by side:
+
+| | **AgentX** (installed) | **AgentX Dev** |
+|---|---|---|
+| Build it with | `scripts/install.sh` | `scripts/run-dev.sh` |
+| Built from | a committed state (HEAD, or `--ref <tag>`), in a temporary git worktree | your working copy, edits included |
+| Lives in | `/Applications/AgentX.app` | `build/AgentX Dev.app` |
+| agent-core | embedded in the app bundle (production dependencies only) | runs from `agent-core/` in the repo |
+| Data | `~/Library/Application Support/AgentX` | `~/Library/Application Support/AgentX Dev` |
+| Hotkey, links | ⌥Space, `agentx://` | ⌃⌥Space, `agentx-dev://` |
+| Automations | as you set them | paused by default, so nothing runs twice |
+
+```bash
+scripts/install.sh            # build HEAD, check it, install to /Applications, relaunch
+```
+
+```bash
+scripts/install.sh --rollback # put the previous version back
+```
+
+`install.sh` refuses to build uncommitted changes (use `--allow-dirty` to test the script itself, or `--build-only` to check a build without installing). It runs `npm ci --omit=dev --ignore-scripts` and `npm audit` on agent-core, checks that the Claude Code engine is signed by Anthropic, builds with `Config/Stable.xcconfig`, and keeps the old app for `--rollback`.
+
+**Signing (one-time, recommended):** builds are ad-hoc signed by default, so macOS forgets permissions like Accessibility and Screen Recording after every rebuild. Add your Apple ID in Xcode → Settings → Accounts (free), then copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` and put your team id in it.
+
+## Run the Dev copy
 
 ```bash
 scripts/run-dev.sh
 ```
 
-That generates the Xcode project, builds an optimized (Release) AgentX and its desktop widgets with `xcodebuild`, installs the app at `build/AgentX.app`, and opens it. Use `scripts/run-dev.sh --debug` for a Debug build to attach the debugger to. To work in Xcode instead:
+That generates the Xcode project, builds an optimized (Release) **AgentX Dev** and its widgets with `xcodebuild`, puts it at `build/AgentX Dev.app`, and opens it. Use `scripts/run-dev.sh --debug` for a Debug build to attach the debugger to. To work in Xcode instead (it builds AgentX Dev too):
 
 ```bash
 xcodegen generate && open AgentX.xcodeproj
@@ -16,7 +42,17 @@ xcodegen generate && open AgentX.xcodeproj
 
 The first time, Xcode asks you to trust SwiftTerm's build plugin. Click **Trust & Enable**. `swift build --package-path AgentXKit` still builds and tests all the app code quickly, but without the widgets.
 
-**Requirements:** macOS 26+, Xcode, XcodeGen (`brew install xcodegen`), Node 22.18+, and `npm install` in `agent-core/`. You also need a Claude Code login: in AgentX, use **Sign In…**, then type `/login`.
+**Requirements:** macOS 26+, Xcode, XcodeGen (`brew install xcodegen`), Node 22.18+, and `npm ci` in `agent-core/`. You also need a Claude Code login: in AgentX, use **Sign In…**, then type `/login`.
+
+## Security
+
+AgentX lets Claude read your mail, calendar, notes and files and act on your Mac, so it treats everything Claude *reads* as possibly hostile. [SECURITY.md](SECURITY.md) has the threat model. In short:
+
+- **Untrusted content.** Once a conversation has read a web page, email, note, calendar invite, clipboard or a file outside your projects, anything that could send data out (fetching a URL, opening a link, the clipboard) asks first, and "Always allow" isn't offered for sending or deleting. Scheduled runs start that way.
+- **Protected files.** The assistant, tasks and automations can never read or change credentials, keys, cookies, the Keychain or browser profiles, even through a symlink or a shell command.
+- **Stop everything** (menu bar, ⌃⌥⌘.) interrupts every session, denies what's waiting and pauses automations.
+- **Activity log** (Settings → Activity): every action that changed something, every approval and every security decision, kept 30 days.
+- Links that do something (`agentx://run/…`) need a secret token, so web pages can't trigger them. The app talks to agent-core only over pipes and opens no ports. The installed app runs only its own embedded, signed agent-core, and checks Anthropic's signature on the Claude Code engine before using it.
 
 ## How it fits together
 
@@ -29,8 +65,10 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `AgentXKit/Sources/AgentXKit/App` | Scenes (window, menu bar, settings), dashboard, `AppModel` |
 | `AgentXKit/Sources/AgentXKit/Chats` | Chats section: claude.ai in a web view, chat-only |
 | `AgentXKit/Sources/AgentXKit/Sessions` | Session list, conversation view, tool cards, approvals, phone sync |
-| `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models |
-| `agent-core/src` | Sidecar: `sessions.ts` (query / resume / approvals), `rpc.ts` (wire format) |
+| `AgentXKit/Sources/AgentXKit/Core` | `AgentClient` (RPC to the sidecar), transcript parsing, models, `AppChannel` (installed vs Dev) |
+| `AgentXKit/Sources/AgentXKit/Security` | Path guard, activity log, kill switch, link tokens, signature checks, Settings → Security |
+| `agent-core/src` | Sidecar: `sessions.ts` (query / resume / approvals), `policy.ts` (security policy), `rpc.ts` (wire format) |
+| `Config/` | `Base`, `Dev` and `Stable` build settings; your git-ignored `Local.xcconfig` for signing |
 | `App/` | Thin Xcode app target, Info.plist, entitlements |
 | `Widgets/` | WidgetKit extension (Claude, Mac Vitals, GitHub Activity) |
 | `AgentXKit/Sources/AgentXShared` | The widget snapshot format, shared by the app and the widgets |
@@ -150,3 +188,9 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M3: Mac assistant (Calendar, Files, Apps, Mail…) and ⌥Space launcher
 - [x] M4: automations (scheduled Claude tasks with notifications)
 - [x] M5: plan-usage meter, desktop widgets
+- [x] M6: installable app next to AgentX Dev, security policy (untrusted content, protected files, kill switch, activity log)
+- [ ] M7: memory and context (what's on screen, selection, browser tab)
+- [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center
+- [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)
+- [ ] M10: long-running tasks with check-ins
+- [ ] M11: operating other apps through Accessibility
