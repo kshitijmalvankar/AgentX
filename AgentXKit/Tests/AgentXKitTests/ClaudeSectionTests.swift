@@ -57,3 +57,61 @@ struct ClaudeSectionTests {
         for a in store.approvals { store.answer(a, .deny()) }
     }
 }
+
+@Suite("Deleting conversations")
+@MainActor
+struct DeleteConversationTests {
+    func makeProjects() throws -> (URL, String) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("projects-\(UUID().uuidString)")
+        let project = root.appendingPathComponent("-Users-alex-Library-Application-Support-AgentX-Assistant")
+        let id = UUID().uuidString.lowercased()
+        try FileManager.default.createDirectory(at: project.appendingPathComponent(id), withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: project.appendingPathComponent("\(id).jsonl"))
+        return (root, id)
+    }
+
+    @Test func findsTheTranscriptAndItsFolder() throws {
+        let (root, id) = try makeProjects()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = SessionFiles.locate(id, in: root).map(\.lastPathComponent)
+        #expect(files == ["\(id).jsonl", id])
+        #expect(SessionFiles.locate("../../etc/passwd", in: root).isEmpty, "only real session ids")
+        #expect(SessionFiles.locate(UUID().uuidString, in: root).isEmpty)
+    }
+
+    @Test func movesBothToTheTrashAndForgetsTheConversation() async throws {
+        let (root, id) = try makeProjects()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = SessionStore(client: AgentClient())
+        store.projectsDirectory = root
+        var trashed: [String] = []
+        store.moveToTrash = { trashed.append($0.lastPathComponent) }
+        let c = Conversation(id: id, kind: .assistant, sessionId: id, cwd: "/tmp", title: "Dark mode")
+        store.insert(c)
+        store.selectAssistant(id)
+
+        try await store.trash(id)
+        #expect(trashed == ["\(id).jsonl", id])
+        #expect(store.conversations[id] == nil)
+        #expect(store.assistantSelectedKey == nil)
+    }
+
+    @Test func aConversationWithoutASessionJustCloses() async throws {
+        let store = SessionStore(client: AgentClient())
+        var trashed = 0
+        store.moveToTrash = { _ in trashed += 1 }
+        let c = Conversation(id: "new-1", kind: .assistant, sessionId: nil, cwd: "/tmp", title: "Draft")
+        store.insert(c)
+        try await store.trash("new-1")
+        #expect(trashed == 0)
+        #expect(store.conversations["new-1"] == nil)
+    }
+
+    @Test func missingFilesAreAnErrorNotASilentSuccess() async throws {
+        let store = SessionStore(client: AgentClient())
+        store.projectsDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("empty-\(UUID().uuidString)")
+        let id = UUID().uuidString
+        store.insert(Conversation(id: id, kind: .assistant, sessionId: id, cwd: "/tmp", title: "Gone"))
+        await #expect(throws: ToolError.self) { try await store.trash(id) }
+    }
+}

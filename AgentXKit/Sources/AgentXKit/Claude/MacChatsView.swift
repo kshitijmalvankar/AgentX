@@ -8,6 +8,7 @@ struct MacChatsView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
         HSplitView {
             MacChatList()
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
@@ -19,6 +20,18 @@ struct MacChatsView: View {
                 }
             }
             .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .confirmationDialog("Move “\(model.pendingTrash?.title ?? "")” to the Trash?",
+                            isPresented: Binding(get: { model.pendingTrash != nil }, set: { if !$0 { model.pendingTrash = nil } }),
+                            titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) {
+                guard let pending = model.pendingTrash else { return }
+                model.pendingTrash = nil
+                Task { await model.trashConversation(pending.key, title: pending.title) }
+            }
+            Button("Cancel", role: .cancel) { model.pendingTrash = nil }
+        } message: {
+            Text("It's removed from AgentX and from Claude Code's history on this Mac. You can put it back from the Trash. Chats on claude.ai aren't affected.")
         }
     }
 }
@@ -53,21 +66,38 @@ private struct MacChatList: View {
         List(selection: selection) {
             if !unsaved.isEmpty {
                 Section("Now") {
-                    ForEach(unsaved) { c in row(c.title, detail: c.liveState?.label ?? "").tag(c.id as String?) }
+                    ForEach(unsaved) { c in
+                        row(c.title, detail: c.liveState?.label ?? "")
+                            .tag(c.id as String?)
+                            .contextMenu { trashButton(c.id, c.title) }
+                    }
                 }
             }
             Section("Recent") {
                 ForEach(store.assistantSessions) { s in
-                    row(s.title, detail: s.modifiedDate.relative).tag(s.sessionId as String?)
+                    row(s.title, detail: s.modifiedDate.relative)
+                        .tag(s.sessionId as String?)
+                        .contextMenu { trashButton(s.sessionId, s.title) }
                 }
             }
         }
         .listStyle(.sidebar)
+        // The Delete key (and Edit → Delete) on the selected conversation.
+        .onDeleteCommand {
+            guard let key = store.assistantSelectedKey else { return }
+            let title = store.selectedAssistantConversation?.title
+                ?? store.assistantSessions.first { $0.sessionId == key }?.title ?? "Conversation"
+            model.pendingTrash = (key, title)
+        }
         .overlay {
             if store.assistantSessions.isEmpty && unsaved.isEmpty {
                 Text("No conversations yet").foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func trashButton(_ key: String, _ title: String) -> some View {
+        Button("Move to Trash…", systemImage: "trash", role: .destructive) { model.pendingTrash = (key, title) }
     }
 
     private func row(_ title: String, detail: String) -> some View {

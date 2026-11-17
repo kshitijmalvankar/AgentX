@@ -347,6 +347,20 @@ public final class AppModel {
         macHandoff = MacHandoff(text: text, taint: "text carried over from claude.ai")
     }
 
+    /// A conversation waiting for "Move to Trash?" (set from menus; Chats shows the dialog).
+    public var pendingTrash: (key: String, title: String)?
+
+    /// Move a Mac conversation to the Trash (after you confirmed).
+    public func trashConversation(_ key: String, title: String) async {
+        do {
+            try await sessions.trash(key)
+            activity.record(.tool, "moved to Trash", tool: "conversation", detail: title)
+        } catch {
+            activity.record(.tool, "couldn't move to Trash", tool: "conversation", detail: "\(title): \(error.localizedDescription)")
+            NotificationManager.shared.postNotice(title: "Couldn't delete “\(title)”", body: error.localizedDescription)
+        }
+    }
+
     /// Copy a Mac conversation for pasting into a new claude.ai chat.
     public func continueInClaudeAI(_ c: Conversation) {
         let pasteboard = NSPasteboard.general

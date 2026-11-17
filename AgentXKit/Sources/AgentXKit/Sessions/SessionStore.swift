@@ -438,6 +438,36 @@ public final class SessionStore {
 
     // MARK: Approvals
 
+    /// Where Claude Code keeps transcripts (a temporary folder in tests).
+    @ObservationIgnored var projectsDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+    /// How deleted conversations leave: to the Trash, so you can put them back.
+    @ObservationIgnored var moveToTrash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+
+    /// Move a conversation to the Trash: its Claude Code transcript
+    /// (`<session>.jsonl`) and helper folder (`<session>/`), the same files the
+    /// Agent SDK's deleteSession removes, but recoverable. A running process is
+    /// stopped first. A conversation that never got a session id just closes.
+    func trash(_ key: String) async throws {
+        let c = conversations[key] ?? conversation(forSessionId: key)
+        let sessionId = c?.sessionId ?? (sessions.contains { $0.sessionId == key } ? key : nil)
+        if let c, c.isLive {
+            await stop(c)
+            for _ in 0..<50 where c.isLive { try? await Task.sleep(for: .milliseconds(100)) }
+        }
+        if let sessionId {
+            let files = SessionFiles.locate(sessionId, in: projectsDirectory)
+            guard !files.isEmpty else { throw ToolError("Couldn't find this conversation's files in ~/.claude/projects.") }
+            for url in files { try moveToTrash(url) }
+            sessions.removeAll { $0.sessionId == sessionId }
+        }
+        if let c { conversations.removeValue(forKey: c.id) }
+        for k in [key, c?.id, sessionId].compactMap({ $0 }) {
+            if assistantSelectedKey == k { assistantSelectedKey = nil }
+            if selectedKey == k { selectedKey = nil }
+        }
+        scheduleRefresh(after: .milliseconds(500))
+    }
+
     /// Awaited before a Claude Code process starts (the engine's signature check).
     @ObservationIgnored var beforeStart: (() async -> Void)?
 
@@ -575,5 +605,29 @@ public final class SessionStore {
             approvalWaiters.removeValue(forKey: approval.id)?.resume(returning: ApprovalAnswer.deny("Cancelled").json)
         }
         approvals.removeAll(where: predicate)
+    }
+}
+
+/// Finding a session's files in ~/.claude/projects.
+enum SessionFiles {
+    /// `<project>/<id>.jsonl` and, if present, `<project>/<id>/`. Only real
+    /// session ids, and only files that really are inside the projects folder.
+    static func locate(_ sessionId: String, in projects: URL) -> [URL] {
+        guard UUID(uuidString: sessionId) != nil else { return [] }
+        let fm = FileManager.default
+        let root = projects.resolvingSymlinksInPath().standardizedFileURL.path
+        guard let dirs = try? fm.contentsOfDirectory(at: projects, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+        for dir in dirs {
+            let transcript = dir.appendingPathComponent("\(sessionId).jsonl")
+            guard fm.fileExists(atPath: transcript.path) else { continue }
+            let inside = { (url: URL) in url.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(root + "/") }
+            guard inside(transcript) else { return [] }
+            var found = [transcript]
+            let folder = dir.appendingPathComponent(sessionId, isDirectory: true)
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue, inside(folder) { found.append(folder) }
+            return found
+        }
+        return []
     }
 }

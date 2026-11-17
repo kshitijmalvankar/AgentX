@@ -106,6 +106,9 @@ struct ConversationView: View {
                 if conversation.kind == .assistant {
                     Button("Continue in claude.ai", systemImage: "cloud") { model.continueInClaudeAI(conversation) }
                         .help("Copy this conversation and open a new claude.ai chat to paste it into (claude.ai can't act on your Mac).")
+                    Button("Move to Trash…", systemImage: "trash", role: .destructive) {
+                        model.pendingTrash = (conversation.sessionId ?? conversation.id, conversation.title)
+                    }
                 }
                 Button(phoneSyncOn ? "Show Phone Sync" : "Continue on Phone", systemImage: "iphone") {
                     if phoneSyncOn { tab = .terminal } else { startPhoneSync() }

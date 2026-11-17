@@ -93,6 +93,7 @@ The two histories stay separate: claude.ai's conversations aren't available to a
 
 - **Continue on Mac** (claude.ai side): brings the chat, or just the text you selected in it, into a new conversation on this Mac, where Claude can use your Mac. It lands in the message box, and nothing is sent until you press Send. The text is read from the page you're looking at; nothing is fetched. Because a chat can quote web pages or files, that conversation starts as having read untrusted content (see [SECURITY.md](SECURITY.md)).
 - **Continue in claude.ai** (⋯ menu of a Mac conversation): copies the conversation as Markdown and opens a new claude.ai chat to paste it into.
+- **Delete** a Mac conversation with right-click → **Move to Trash…**, the Delete key, or the ⋯ menu. Its Claude Code transcript goes to the Trash, so you can put it back. Delete claude.ai chats in claude.ai's own menu.
 - **Continue on phone** works for Mac conversations too, through Remote Control (see below). On your phone it continues as a plain Claude Code session, and AgentX's Mac tools stay on the Mac.
 
 On the claude.ai side, a chat you send from your phone appears here; ⌘R pulls it in right away. AgentX only hosts the page. Apart from Continue on Mac, which reads the text on screen when you ask, it doesn't read or automate it. It keeps the side chat-only by hiding claude.ai's Code links, and it sends any Code page to Sessions. Old `agentx://chats` and `agentx://assistant` links open the matching side.
