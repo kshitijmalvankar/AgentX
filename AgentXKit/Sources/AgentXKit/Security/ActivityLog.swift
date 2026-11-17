@@ -86,6 +86,9 @@ public final class ActivityLog {
         }
     }
 
+    /// Wait for writes already queued (tests, before deleting the folder).
+    func flush() { queue.sync {} }
+
     public func clear() {
         recent = []
         let url = fileURL

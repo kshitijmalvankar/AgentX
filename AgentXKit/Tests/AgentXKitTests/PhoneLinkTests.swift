@@ -20,11 +20,19 @@ final class MemoryPhoneKeys: PhoneKeyStore, @unchecked Sendable {
 struct PhoneLinkTests {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("phonelink-\(UUID().uuidString)")
     let keys = MemoryPhoneKeys()
+    let scratch = ScratchDefaults("agentx-phone-tests")
+
+    /// Remove this test's files and settings (after the link and its log finish writing).
+    func cleanUp(_ model: AppModel? = nil) {
+        model?.phone.isEnabled = false
+        model?.activity.flush()
+        try? FileManager.default.removeItem(at: dir)
+        scratch.remove()
+    }
 
     func makeLink() -> (PhoneLink, AppModel) {
-        let defaults = UserDefaults(suiteName: "agentx-phone-tests-\(UUID().uuidString)")!
-        let link = PhoneLink(keys: keys, defaults: defaults, file: dir.appendingPathComponent("phone-devices.json"),
-                             preferredPort: 0, advertise: false)
+        let link = PhoneLink(keys: keys, defaults: scratch.defaults, file: dir.appendingPathComponent("phone-devices.json"),
+                             preferredPort: testListenerPort(), advertise: false)
         let model = AppModel(activity: ActivityLog(fileURL: dir.appendingPathComponent("activity.jsonl")), phone: link)
         link.attach(model)
         return (link, model)
@@ -52,7 +60,7 @@ struct PhoneLinkTests {
     @Test func listensOnlyWhilePairingOrPaired() async throws {
         let (link, model) = makeLink()
         // The link holds the app model weakly (as in the app): keep it alive.
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         #expect(link.status == .idle, "nothing paired: nothing listening")
         link.startPairing()
         _ = try await port(link)
@@ -68,7 +76,7 @@ struct PhoneLinkTests {
     @Test func aNewPhoneWaitsForYourOKThenGetsSnapshots() async throws {
         let (link, model) = makeLink()
         // The link holds the app model weakly (as in the app): keep it alive.
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         link.startPairing()
         let code = try #require(link.pairing)
         let phone = try await connect(code, port: try await port(link))
@@ -99,7 +107,7 @@ struct PhoneLinkTests {
     @Test func decliningDropsThePhoneAndItsKey() async throws {
         let (link, model) = makeLink()
         // The link holds the app model weakly (as in the app): keep it alive.
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         link.startPairing()
         let code = try #require(link.pairing)
         let phone = try await connect(code, port: try await port(link))
@@ -116,7 +124,7 @@ struct PhoneLinkTests {
 
     @Test func approvalsCanBeAnsweredFromThePhoneWhenAllowed() async throws {
         let (link, model) = makeLink()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         // A Mac conversation waiting for approval.
         let c = Conversation(id: "m", kind: .assistant, sessionId: "s-m", cwd: "/tmp", title: "Send the report")
         c.liveHandle = "hm"
@@ -158,7 +166,7 @@ struct PhoneLinkTests {
     @Test func revokingCutsThePhoneOff() async throws {
         let (link, model) = makeLink()
         // The link holds the app model weakly (as in the app): keep it alive.
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         link.startPairing()
         let code = try #require(link.pairing)
         let p = try await port(link)
@@ -200,7 +208,7 @@ struct PhoneLinkTests {
 
     @Test func aNewConversationKeepsItsIdWhenItGetsASessionId() async throws {
         let (link, model) = makeLink()
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         // A conversation started from the phone: AgentX's id first, Claude Code's session id later.
         let c = Conversation(id: "new-1", kind: .assistant, sessionId: nil, cwd: "/tmp", title: "Turn on dark mode")
         c.liveHandle = "h1"
@@ -236,7 +244,7 @@ struct PhoneLinkTests {
 
     @Test func remindersFromThePhoneRespectTheSetting() async throws {
         let (link, model) = makeLink()
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         let phone = try await pairedPhone(link)
         defer { phone.close() }
 
@@ -257,7 +265,7 @@ struct PhoneLinkTests {
 
     @Test func aRequestFromANewerAppGetsAnAnswerNotADroppedConnection() async throws {
         let (link, model) = makeLink()
-        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        defer { cleanUp(model) }
         let phone = try await pairedPhone(link)
         defer { phone.close() }
 

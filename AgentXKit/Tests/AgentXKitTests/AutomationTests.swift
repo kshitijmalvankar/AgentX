@@ -72,14 +72,12 @@ struct AutomationCenterTests {
         #expect(reloaded.upcoming.count == 1)
     }
 
-    func freshDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "agentx-tests-\(UUID().uuidString)")!
-    }
 
     @Test func longMissedRunsAreRecordedAsSkipped() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let center = AutomationCenter(directory: dir, defaults: freshDefaults(), pausedByDefault: false)
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        let center = AutomationCenter(directory: dir, defaults: scratch.defaults, pausedByDefault: false)
         var a = center.automations[1]
         a.enabled = true
         center.update(a)
@@ -94,8 +92,9 @@ struct AutomationCenterTests {
 
     @Test func pausedAutomationsSkipQuietlyWithoutCatchUp() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let defaults = freshDefaults()
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        let defaults = scratch.defaults
         let center = AutomationCenter(directory: dir, defaults: defaults, pausedByDefault: true)
         #expect(center.isPaused, "AgentX Dev starts with automations paused")
         var a = center.automations[0]

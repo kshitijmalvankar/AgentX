@@ -179,6 +179,8 @@ test("a symlink into a protected folder is blocked", async () => {
   const p = new SessionPolicy({ home: fakeHome, cwd: fakeHome });
   assert.equal(p.beforeTool("Read", { file_path: join(fakeHome, "Desktop", "keys", "id_ed25519") }).decision, "deny");
   assert.equal(p.beforeTool("Read", { file_path: join(fakeHome, "Desktop", "notes.txt") }).decision, "allow-default");
+  const { rmSync } = await import("node:fs");
+  rmSync(fakeHome, { recursive: true, force: true });
 });
 
 test("a conversation can start already tainted (carried-over text, resumed conversation)", () => {

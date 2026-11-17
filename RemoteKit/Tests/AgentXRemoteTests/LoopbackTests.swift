@@ -19,7 +19,8 @@ struct LoopbackTests {
                      onSession: @escaping @Sendable (SecureSession) -> Void) async throws -> (RemoteServer, UInt16, Box<Int>) {
         let port = Box<UInt16>(0)
         let rejected = Box<Int>(0)
-        let server = RemoteServer(serviceName: nil, preferredPort: 0,
+        // Outside the outgoing-connection range (49152+), so it can't collide with a previous test's client port.
+        let server = RemoteServer(serviceName: nil, preferredPort: UInt16.random(in: 20_000..<40_000),
                                   psk: { $0 == deviceID ? psk : nil },
                                   onSession: onSession,
                                   onState: { if case .listening(let p) = $0 { port.set(p) } },

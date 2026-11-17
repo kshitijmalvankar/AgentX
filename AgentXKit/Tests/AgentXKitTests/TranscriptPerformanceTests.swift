@@ -20,7 +20,8 @@ struct TranscriptPerformanceTests {
                      "event": ["type": "content_block_delta", "delta": ["type": "text_delta", "text": .string(word)]]])
         }
         #expect(c.draftText == "", "published in a batch, not per delta")
-        try await Task.sleep(for: .milliseconds(120))
+        // The batch lands about 40 ms later; wait for it rather than a fixed time (tests run in parallel).
+        for _ in 0..<200 where c.draftText.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
         #expect(c.draftText == "Hello world")
         c.apply(["type": "assistant", "uuid": "a1", "message": ["role": "assistant", "content": [["type": "text", "text": "Hello world"]]]])
         #expect(c.draftText == "" && c.items.count == 1 && c.hasLiveItems)
