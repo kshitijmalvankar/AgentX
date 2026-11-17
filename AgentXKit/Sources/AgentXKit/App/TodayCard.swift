@@ -8,6 +8,9 @@ import SwiftUI
 @Observable
 public final class TodayAgenda {
     public private(set) var agenda: Agenda?
+    /// Reminders you ticked off on the card (this session), so you can undo.
+    public private(set) var completed: [Agenda.Reminder] = []
+    public var lastError: String?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
     /// Start keeping it current (called when the card first appears).
@@ -24,6 +27,31 @@ public final class TodayAgenda {
         let today = Calendar.current.startOfDay(for: Date())
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
         agenda = try? await CalendarService.shared.agenda(from: today, to: tomorrow, prompt: false)
+    }
+
+    /// Tick a reminder off from the card.
+    func complete(_ reminder: Agenda.Reminder) async {
+        do {
+            try await CalendarService.shared.setCompleted(reminder.id, true)
+            completed.removeAll { $0.id == reminder.id }
+            completed.insert(reminder, at: 0)
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+        await refresh()
+    }
+
+    /// Put a ticked-off reminder back.
+    func undo(_ reminder: Agenda.Reminder) async {
+        do {
+            try await CalendarService.shared.setCompleted(reminder.id, false)
+            completed.removeAll { $0.id == reminder.id }
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+        await refresh()
     }
 
     /// The card's "Show my agenda" button: macOS asks for Calendar and Reminders.
@@ -70,15 +98,20 @@ struct TodayCard: View {
                     more(agenda.events.count, "event")
                 }
             }
-            if !agenda.reminders.isEmpty {
+            if !agenda.reminders.isEmpty || !today.completed.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(agenda.reminders.prefix(Self.shown)) { reminder in
-                        Button { open("/System/Applications/Reminders.app") } label: { ReminderRow(reminder: reminder) }
-                            .buttonStyle(.plain)
-                            .help("Open Reminders")
+                        ReminderRow(reminder: reminder, done: false) { Task { await today.complete(reminder) } }
                     }
                     more(agenda.reminders.count, "reminder")
+                    // Ticked off here: shown done (click to undo) until AgentX quits.
+                    ForEach(today.completed.prefix(3)) { reminder in
+                        ReminderRow(reminder: reminder, done: true) { Task { await today.undo(reminder) } }
+                    }
                 }
+            }
+            if let error = today.lastError {
+                Text(error).font(.caption).foregroundStyle(.red)
             }
         }
 
@@ -124,8 +157,15 @@ struct TodayCard: View {
 
 private struct EventRow: View {
     let event: Agenda.Event
+    @State private var showDetails = false
 
     var body: some View {
+        Button { showDetails = true } label: { row }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showDetails, arrowEdge: .trailing) { EventDetails(event: event) }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(event.isAllDay ? "All day" : event.start.formatted(.dateTime.hour().minute()))
                 .font(.callout.monospacedDigit())
@@ -143,32 +183,122 @@ private struct EventRow: View {
             Spacer(minLength: 0)
         }
         .font(.callout)
-        .help("\(event.title) · \(event.calendar)")
+        .contentShape(.rect)
+        .help("\(event.title) · \(event.calendar). Click for details.")
     }
 }
 
+/// A reminder: the circle ticks it off (or, once done, puts it back); the
+/// rest of the row shows its details.
 private struct ReminderRow: View {
     let reminder: Agenda.Reminder
+    let done: Bool
+    let toggle: () -> Void
+    @State private var showDetails = false
+
+    private var tint: Color { reminder.color.map { Color(red: $0.red, green: $0.green, blue: $0.blue) } ?? .accentColor }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "circle")
-                .foregroundStyle(reminder.color.map { Color(red: $0.red, green: $0.green, blue: $0.blue) } ?? .accentColor)
-                .frame(width: 14)
-            Text(reminder.title).lineLimit(1)
-            Spacer(minLength: 4)
-            if let due = reminder.due {
-                Text(label(due))
-                    .font(.caption)
-                    .foregroundStyle(reminder.isOverdue ? Color.red : Color.secondary)
+            Button(action: toggle) {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(tint)
+                    .frame(width: 14)
+                    .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .help(done ? "Mark as not done" : "Mark as done")
+            .accessibilityLabel(done ? "Mark \(reminder.title) as not done" : "Mark \(reminder.title) as done")
+
+            Button { showDetails = true } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(reminder.title)
+                        .lineLimit(1)
+                        .strikethrough(done)
+                        .foregroundStyle(done ? .secondary : .primary)
+                    Spacer(minLength: 4)
+                    if let due = reminder.due, !done {
+                        Text(label(due))
+                            .font(.caption)
+                            .foregroundStyle(reminder.isOverdue ? Color.red : Color.secondary)
+                    }
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("Click for details")
+            .popover(isPresented: $showDetails, arrowEdge: .trailing) { ReminderDetails(reminder: reminder, done: done, toggle: toggle) }
         }
         .font(.callout)
-        .contentShape(.rect)
     }
 
     private func label(_ due: Date) -> String {
         if reminder.isOverdue { return "Overdue · " + due.formatted(.dateTime.day().month(.abbreviated)) }
         return reminder.hasTime ? due.formatted(.dateTime.hour().minute()) : "Today"
+    }
+}
+
+private struct EventDetails: View {
+    let event: Agenda.Event
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(event.title).font(.headline)
+            Label(time, systemImage: "clock")
+            Label(event.calendar, systemImage: "calendar")
+            if let location = event.location, !location.isEmpty { Label(location, systemImage: "mappin.and.ellipse") }
+            if let notes = event.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                ScrollView { Text(notes).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
+                    .frame(maxHeight: 160)
+            }
+            Button("Open Calendar") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app")) }
+                .secondaryButton()
+                .controlSize(.small)
+        }
+        .font(.callout)
+        .padding(16)
+        .frame(width: 300, alignment: .leading)
+    }
+
+    private var time: String {
+        if event.isAllDay { return "All day" }
+        return "\(event.start.formatted(.dateTime.hour().minute()))–\(event.end.formatted(.dateTime.hour().minute()))"
+    }
+}
+
+private struct ReminderDetails: View {
+    let reminder: Agenda.Reminder
+    let done: Bool
+    let toggle: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(reminder.title).font(.headline).strikethrough(done)
+            if let due = reminder.due {
+                Label(reminder.hasTime ? due.formatted(.dateTime.weekday(.wide).day().month().hour().minute())
+                                       : due.formatted(.dateTime.weekday(.wide).day().month()),
+                      systemImage: "calendar.badge.clock")
+                    .foregroundStyle(reminder.isOverdue && !done ? .red : .primary)
+            }
+            Label(reminder.list, systemImage: "list.bullet")
+            if let notes = reminder.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                ScrollView { Text(notes).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
+                    .frame(maxHeight: 160)
+            }
+            HStack {
+                Button(done ? "Mark as Not Done" : "Mark as Done", systemImage: done ? "arrow.uturn.backward" : "checkmark") {
+                    toggle()
+                    dismiss()
+                }
+                .primaryButton()
+                Button("Open Reminders") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Reminders.app")) }
+                    .secondaryButton()
+            }
+            .controlSize(.small)
+        }
+        .font(.callout)
+        .padding(16)
+        .frame(width: 300, alignment: .leading)
     }
 }

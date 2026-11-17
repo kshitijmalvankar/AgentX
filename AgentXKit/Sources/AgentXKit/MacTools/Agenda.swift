@@ -18,6 +18,7 @@ public struct Agenda: Sendable, Equatable {
         public let calendar: String
         public let color: RGB?
         public let location: String?
+        public var notes: String? = nil
     }
 
     public struct Reminder: Sendable, Equatable, Identifiable {
@@ -31,6 +32,7 @@ public struct Agenda: Sendable, Equatable {
         public let color: RGB?
         /// Due on an earlier day and still open.
         public let isOverdue: Bool
+        public var notes: String? = nil
     }
 
     public struct RGB: Sendable, Equatable {

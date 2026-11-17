@@ -60,7 +60,7 @@ actor CalendarService {
             agenda.events = events.map { e in
                 Agenda.Event(id: e.calendarItemIdentifier + "\(e.startDate.timeIntervalSince1970)", title: e.title ?? "(no title)",
                              start: e.startDate, end: e.endDate, isAllDay: e.isAllDay, calendar: e.calendar.title,
-                             color: Self.rgb(e.calendar.cgColor), location: e.location)
+                             color: Self.rgb(e.calendar.cgColor), location: e.location, notes: e.notes)
             }
         }
 
@@ -77,7 +77,7 @@ actor CalendarService {
                         guard let due = Agenda.dueDate(r.dueDateComponents) else { return nil }
                         return Agenda.Reminder(id: r.calendarItemIdentifier, title: r.title ?? "(no title)", due: due.date,
                                                hasTime: due.hasTime, list: r.calendar.title, color: Self.rgb(r.calendar.cgColor),
-                                               isOverdue: Agenda.isOverdue(due.date, today: now))
+                                               isOverdue: Agenda.isOverdue(due.date, today: now), notes: r.notes)
                     })
                 }
             }
@@ -144,6 +144,17 @@ actor CalendarService {
         }
         try store.save(reminder, commit: true)
         return "Added reminder \"\(title)\"\(due.map { " for \(ToolDates.describe($0))" } ?? "") to \(reminder.calendar.title)."
+    }
+
+    /// Tick a reminder off (or back on) by its id. Used by the Today card,
+    /// where you click it yourself, so it doesn't go through Claude.
+    func setCompleted(_ id: String, _ completed: Bool) async throws {
+        try await ensureAccess(to: .reminder)
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else {
+            throw ToolError("That reminder doesn't exist any more.")
+        }
+        reminder.isCompleted = completed
+        try store.save(reminder, commit: true)
     }
 
     func completeReminder(title: String) async throws -> String {
