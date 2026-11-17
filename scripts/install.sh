@@ -132,6 +132,9 @@ say "Claude Code engine signed by Anthropic ($ANTHROPIC_TEAM)"
 # 4. Build Release with the stable channel settings.
 say "Generating the Xcode project"
 (cd "$SRC" && xcodegen generate --quiet)
+# Fresh app bundle (compiled code is kept): a stale embedded widget extension
+# breaks the build when signing settings change.
+rm -rf "$WORK/DerivedData/Build/Products/Release/AgentX.app" "$WORK/DerivedData/Build/Products/Release/AgentXWidgets.appex"
 say "Building AgentX $COMMIT (build $BUILD_NUMBER)"
 xcodebuild -project "$SRC/AgentX.xcodeproj" -scheme AgentX -configuration Release \
   -derivedDataPath "$WORK/DerivedData" \

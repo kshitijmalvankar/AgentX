@@ -43,6 +43,11 @@ fi
 echo "==> Generating the Xcode project"
 (cd "$ROOT" && xcodegen generate --quiet)
 
+# Start from a fresh app bundle: when only signing settings change, Xcode can
+# leave an old copy of the widget extension inside it ("Embedded binary is not
+# signed with the same certificate"). Compiled code is kept, so this is cheap.
+rm -rf "$BUILT" "$ROOT/build/DerivedData/Build/Products/$CONFIG/AgentXWidgets.appex"
+
 echo "==> Building $NAME and its widgets ($CONFIG)"
 # -skipPackagePluginValidation: trust SwiftTerm's build plugin, as swift build does.
 xcodebuild -project "$ROOT/AgentX.xcodeproj" -scheme AgentX -configuration "$CONFIG" \
