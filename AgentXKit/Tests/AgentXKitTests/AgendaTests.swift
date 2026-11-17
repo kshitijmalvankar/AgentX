@@ -64,3 +64,21 @@ struct AgendaTests {
         #expect(tool.risk == .read)
     }
 }
+
+@Suite("Automation permission")
+struct AutomationAccessTests {
+    @Test func scriptsKnowWhichAppTheyNeed() {
+        #expect(AutomationTarget.of(script: "on run argv\n tell application \"Mail\"\n  get inbox\n end tell\nend run") == .mail)
+        #expect(AutomationTarget.of(script: "tell application \"Notes\" to make new note") == .notes)
+        #expect(AutomationTarget.of(script: "tell application \"Messages\" to send x") == .messages)
+        #expect(AutomationTarget.of(script: "tell application \"System Events\" to tell appearance preferences to set dark mode to true") == .systemEvents)
+        #expect(AutomationTarget.of(script: "set volume output volume 30") == nil, "no app to ask about")
+        #expect(AutomationTarget.of(script: "tell application \"Safari\" to quit") == nil)
+    }
+
+    @Test func remindersCarryTheirNotes() {
+        let r = Agenda.Reminder(id: "r", title: "Call Jayu", due: nil, hasTime: false, list: "Reminders", color: nil,
+                                isOverdue: false, notes: "About the trip")
+        #expect(r.notes == "About the trip")
+    }
+}

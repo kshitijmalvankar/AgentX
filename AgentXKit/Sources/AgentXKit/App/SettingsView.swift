@@ -90,6 +90,7 @@ private struct AssistantSettings: View {
 
     var body: some View {
         Form {
+            PermissionsSection()
             Section {
                 Text("Reading and creating things run on their own and appear as cards in the conversation. Sending, deleting, moving, quitting and running Shortcuts always ask you first. macOS also asks once before AgentX can use Calendar, Reminders, Mail, Notes, Messages or System Events.")
                     .font(.caption)

@@ -48,6 +48,8 @@ enum ProcessRunner {
 /// pasted into the script text, so nothing Claude writes can change the script.
 enum AppleScript {
     static func run(_ source: String, arguments: [String] = [], timeout: TimeInterval = 45) async throws -> String {
+        // Get (or ask for) Automation permission from AgentX itself first.
+        if let target = AutomationTarget.of(script: source) { try await AutomationAccess.ensure(target) }
         let result = try await ProcessRunner.run("/usr/bin/osascript", ["-e", source] + arguments, timeout: timeout)
         guard result.status == 0 else { throw ToolError(explain(result.stderr)) }
         return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -58,7 +60,7 @@ enum AppleScript {
         let text = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.contains("-1743") || text.localizedCaseInsensitiveContains("not authorized") {
             let app = text.range(of: #"(?<=application ")[^"]+"#, options: .regularExpression).map { String(text[$0]) } ?? "that app"
-            return "AgentX isn't allowed to control \(app). Allow it in System Settings › Privacy & Security › Automation › AgentX."
+            return "AgentX isn't allowed to control \(app). Fix it in AgentX Settings → Assistant → Permissions, or in System Settings › Privacy & Security › Automation › AgentX."
         }
         if text.contains("-600") { return "The app isn't running and couldn't be started." }
         if text.contains("-1728") { return "Couldn't find that item (\(text))." }
