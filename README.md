@@ -69,6 +69,9 @@ AgentX.app (SwiftUI)  ── JSON lines over stdin/stdout ──  agent-core (No
 | `AgentXKit/Sources/AgentXKit/Security` | Path guard, activity log, kill switch, link tokens, signature checks, Settings → Security |
 | `agent-core/src` | Sidecar: `sessions.ts` (query / resume / approvals), `policy.ts` (security policy), `rpc.ts` (wire format) |
 | `Config/` | `Base`, `Dev` and `Stable` build settings; your git-ignored `Local.xcconfig` for signing |
+| `RemoteKit/` | The encrypted Mac ↔ iPhone link: handshake, pairing code, messages (shared by both apps) |
+| `AgentXKit/Sources/AgentXKit/Phone` | The Mac side of the iPhone link and Settings → iPhone |
+| `Phone/` | The iPhone app |
 | `App/` | Thin Xcode app target, Info.plist, entitlements |
 | `Widgets/` | WidgetKit extension (Claude, Mac Vitals, GitHub Activity) |
 | `AgentXKit/Sources/AgentXShared` | The widget snapshot format, shared by the app and the widgets |
@@ -120,6 +123,23 @@ Conversations **on this Mac** (in the Claude section) and the **⌥Space launche
 Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), with its parameters and a risk tier. AgentX sends the list to agent-core, which exposes it to Claude as an in-process MCP server (`mcp__agentx__*`) and hands each call back to the app. That way, macOS permission prompts name AgentX. Reading and creating run straight away and show up as cards in the chat. Sending, deleting, moving, quitting, running Shortcuts and reading the clipboard always ask first. **Settings › Assistant** lists every tool and its tier. AppleScript tools pass your text as arguments, never as script code.
 
 In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
+
+### iPhone companion
+
+The AgentX iPhone app watches and controls your Mac:
+
+- **Mac:** vitals, plan usage, what's running, today's events and reminders, automations, and **Stop Everything**.
+- **Approvals:** what's waiting for your OK, with the full details. Allow and Deny need Face ID.
+- **Claude:** your Mac conversations (and running coding sessions, view-only). Message Claude on your Mac and watch the reply stream in.
+- **Activity:** the Mac's activity log.
+
+To set it up:
+
+1. Set your team in `Config/Local.xcconfig` (see the Signing note above).
+2. Connect your iPhone by cable once, turn on **Developer Mode** (Settings → Privacy & Security), and run `scripts/run-phone.sh`. The first time, trust your developer certificate on the iPhone (Settings → General → VPN & Device Management).
+3. On the Mac: **Settings → iPhone → Pair an iPhone**. On the iPhone: **Scan Pairing Code**. Then click **Allow** on the Mac.
+
+The phone finds the Mac on your Wi-Fi. Away from home, use Tailscale on both; the pairing code includes the Mac's Tailscale address. With a free Apple account, iOS stops the app after 7 days (run `scripts/run-phone.sh` again), and there are no push notifications: approvals show up when you open the app. [SECURITY.md](SECURITY.md) (row 11) covers how the link is protected.
 
 ### Plan usage and widgets
 
@@ -206,6 +226,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] M5: plan-usage meter, desktop widgets
 - [x] M6: installable app next to AgentX Dev, security policy (untrusted content, protected files, kill switch, activity log)
 - [x] One Claude section: Mac conversations and claude.ai side by side, with hand-off both ways
+- [x] iPhone companion: monitor, approve with Face ID, Stop Everything, message Claude on your Mac (encrypted link, QR pairing)
 - [ ] M7: memory and context (what's on screen, selection, browser tab)
 - [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center
 - [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)
