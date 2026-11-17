@@ -128,7 +128,7 @@ In the launcher, type a question, or `/code <project> <task>` to start a coding 
 
 The AgentX iPhone app watches and controls your Mac:
 
-- **Mac:** vitals, plan usage, what's running, today's events and reminders, automations, and **Stop Everything**.
+- **Mac:** vitals, plan usage, what's running, today's events and reminders (tap the circle or swipe to tick one off; tap for details), automations, and **Stop Everything**.
 - **Approvals:** what's waiting for your OK, with the full details. Allow and Deny need Face ID.
 - **Claude:** your Mac conversations (and running coding sessions, view-only). Message Claude on your Mac and watch the reply stream in.
 - **Activity:** the Mac's activity log.

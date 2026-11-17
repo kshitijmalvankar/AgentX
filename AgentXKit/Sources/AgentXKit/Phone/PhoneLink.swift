@@ -45,6 +45,7 @@ public final class PhoneLink {
     }
     public var allowApprovals: Bool { didSet { defaults.set(allowApprovals, forKey: Keys.approvals); pushSoon() } }
     public var allowMessages: Bool { didSet { defaults.set(allowMessages, forKey: Keys.messages); pushSoon() } }
+    public var allowReminders: Bool { didSet { defaults.set(allowReminders, forKey: Keys.reminders); pushSoon() } }
 
     static let pairingLifetime: TimeInterval = 5 * 60
 
@@ -64,6 +65,7 @@ public final class PhoneLink {
         static let enabled = "phoneLinkEnabled"
         static let approvals = "phoneAllowApprovals"
         static let messages = "phoneAllowMessages"
+        static let reminders = "phoneAllowReminders"
     }
 
     /// One connected phone.
@@ -86,10 +88,11 @@ public final class PhoneLink {
         self.file = file
         self.preferredPort = preferredPort
         self.advertise = advertise
-        defaults.register(defaults: [Keys.enabled: true, Keys.approvals: true, Keys.messages: true])
+        defaults.register(defaults: [Keys.enabled: true, Keys.approvals: true, Keys.messages: true, Keys.reminders: true])
         isEnabled = defaults.bool(forKey: Keys.enabled)
         allowApprovals = defaults.bool(forKey: Keys.approvals)
         allowMessages = defaults.bool(forKey: Keys.messages)
+        allowReminders = defaults.bool(forKey: Keys.reminders)
         load()
     }
 
@@ -299,8 +302,13 @@ public final class PhoneLink {
     private func receiveLoop(_ link: Link) async {
         defer { disconnected(link) }
         while !Task.isCancelled {
-            guard let envelope = try? await link.session.receive(ClientEnvelope.self) else { return }
-            await handle(envelope, from: link)
+            guard let data = try? await link.session.receiveData() else { return }   // closed or tampered: drop it
+            if let envelope = try? RemoteCoding.decoder.decode(ClientEnvelope.self, from: data) {
+                await handle(envelope, from: link)
+            } else if let id = try? RemoteCoding.decoder.decode(RequestID.self, from: data) {
+                // A newer iPhone app asked for something this Mac doesn't know yet.
+                try? await link.session.send(ServerEvent.result(id: id.id, error: "Update AgentX on your Mac to do this from your iPhone.", conversationID: nil))
+            }
         }
     }
 
@@ -368,6 +376,20 @@ public final class PhoneLink {
             await model.stopEverything(source: name)
             await reply()
             pushSoon()
+        case .setReminder(let id, let completed):
+            guard allowReminders else { return await reply("Ticking off reminders from iPhone is turned off on the Mac.") }
+            let today = model.today
+            guard let reminder = completed
+                    ? today.agenda?.reminders.first(where: { $0.id == id })
+                    : today.completed.first(where: { $0.id == id }) else {
+                return await reply("That reminder isn't on today's list any more.")
+            }
+            if completed { await today.complete(reminder) } else { await today.undo(reminder) }
+            if let error = today.lastError { return await reply(error) }
+            model.activity.record(.tool, completed ? "completed on iPhone" : "reopened on iPhone", tool: "reminder",
+                                  detail: "\(reminder.title) [\(reminder.list)]", origin: name)
+            await reply()
+            pushSoon()
         case .transcript(let id):
             guard let c = await conversation(id, in: model) else { return await reply("That conversation isn't on this Mac.") }
             link.watchedConversation = id
@@ -430,7 +452,8 @@ public final class PhoneLink {
 
     private func push(to link: Link, force: Bool) async {
         guard let model else { return }
-        var snapshot = RemoteSnapshotBuilder.snapshot(model, canApprove: allowApprovals, canMessage: allowMessages)
+        var snapshot = RemoteSnapshotBuilder.snapshot(model, canApprove: allowApprovals, canMessage: allowMessages,
+                                                      canEditReminders: allowReminders)
         if !force, var last = link.lastSnapshot {
             last.date = snapshot.date
             if last == snapshot { return }

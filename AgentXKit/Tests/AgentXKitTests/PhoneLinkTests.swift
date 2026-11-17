@@ -226,6 +226,58 @@ struct PhoneLinkTests {
         #expect(!snapshot.conversations.contains { $0.id == "session-abc" }, "listed once, under the id the phone knows")
     }
 
+    /// The next result event (skipping snapshots and transcripts).
+    func nextResult(_ phone: SecureSession) async throws -> ServerEvent {
+        while true {
+            let event = try await next(phone)
+            if case .result = event { return event }
+        }
+    }
+
+    @Test func remindersFromThePhoneRespectTheSetting() async throws {
+        let (link, model) = makeLink()
+        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        let phone = try await pairedPhone(link)
+        defer { phone.close() }
+
+        link.allowReminders = false
+        try await phone.send(ClientEnvelope(id: 5, request: .setReminder(id: "r1", completed: true)))
+        #expect(try await nextResult(phone) == .result(id: 5, error: "Ticking off reminders from iPhone is turned off on the Mac.", conversationID: nil))
+
+        link.allowReminders = true
+        try await phone.send(ClientEnvelope(id: 6, request: .setReminder(id: "nope", completed: true)))
+        #expect(try await nextResult(phone) == .result(id: 6, error: "That reminder isn't on today's list any more.", conversationID: nil))
+    }
+
+    /// What a newer iPhone app might send.
+    struct FutureEnvelope: Encodable, Sendable {
+        var id: Int
+        var request: [String: [String: Int]]
+    }
+
+    @Test func aRequestFromANewerAppGetsAnAnswerNotADroppedConnection() async throws {
+        let (link, model) = makeLink()
+        defer { withExtendedLifetime(model) {}; try? FileManager.default.removeItem(at: dir) }
+        let phone = try await pairedPhone(link)
+        defer { phone.close() }
+
+        try await phone.send(FutureEnvelope(id: 9, request: ["somethingNew": ["x": 1]]))
+        #expect(try await nextResult(phone) == .result(id: 9, error: "Update AgentX on your Mac to do this from your iPhone.", conversationID: nil))
+        try await phone.send(ClientEnvelope(id: 10, request: .refresh))
+        #expect(try await nextResult(phone) == .result(id: 10, error: nil, conversationID: nil), "still connected")
+    }
+
+    @Test func todayListsDoneRemindersSoTheyCanBeUndone() {
+        let open = Agenda.Reminder(id: "r1", title: "Call Jayu", due: Date(), hasTime: false, list: "Reminders", color: nil, isOverdue: false)
+        let done = Agenda.Reminder(id: "r2", title: "Pay rent", due: Date(), hasTime: false, list: "Home", color: nil, isOverdue: false)
+        var agenda = Agenda(start: Date(), end: Date().addingTimeInterval(86_400))
+        agenda.reminders = [open]
+        let items = RemoteSnapshotBuilder.today(agenda, completed: [done])
+        #expect(items.map(\.id) == ["r1", "r2"])
+        #expect(items[0].isDone == false && items[0].source == "Reminders")
+        #expect(items[1].isDone && items[1].when == "Done")
+    }
+
     @Test func pairingCodesExpire() {
         let used = PairedDevice(id: UUID(), name: "x", pairedAt: Date(), lastSeen: nil, confirmed: false, pairingExpires: Date().addingTimeInterval(-1))
         #expect(!used.isUsable())

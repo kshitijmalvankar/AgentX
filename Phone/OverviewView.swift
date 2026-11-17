@@ -6,6 +6,7 @@ struct OverviewView: View {
     @Environment(PhoneModel.self) private var model
     @State private var confirmStop = false
     @State private var confirmUnpair = false
+    @State private var details: RemoteSnapshot.AgendaItem?
 
     var body: some View {
         NavigationStack {
@@ -42,6 +43,7 @@ struct OverviewView: View {
             } message: {
                 Text("You'll confirm with Face ID.")
             }
+            .sheet(item: $details) { item in AgendaDetails(item: item).presentationDetents([.medium]) }
             .confirmationDialog("Unpair this iPhone?", isPresented: $confirmUnpair, titleVisibility: .visible) {
                 Button("Unpair", role: .destructive) { model.unpair() }
             } message: {
@@ -115,18 +117,56 @@ struct OverviewView: View {
     }
 
     private func today(_ s: RemoteSnapshot) -> some View {
-        Section("Today") {
+        let canEdit = s.canEditReminders == true && model.connection == .connected
+        return Section {
             if s.today.isEmpty {
                 Text("Nothing scheduled.").foregroundStyle(.secondary)
             }
             ForEach(s.today) { item in
-                HStack {
-                    Image(systemName: item.isReminder ? "circle" : "calendar")
-                        .foregroundStyle(item.isOverdue ? .red : .secondary)
-                    Text(item.title).lineLimit(1)
-                    Spacer()
-                    Text(item.when).font(.caption).foregroundStyle(item.isOverdue ? .red : .secondary)
+                HStack(spacing: 12) {
+                    if item.isReminder {
+                        Button {
+                            Task { await model.setReminder(item, completed: !item.isDone) }
+                        } label: {
+                            Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundStyle(item.isOverdue ? .red : .accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canEdit)
+                        .accessibilityLabel(item.isDone ? "Mark \(item.title) as not done" : "Mark \(item.title) as done")
+                    } else {
+                        Image(systemName: "calendar").foregroundStyle(.secondary).frame(width: 22)
+                    }
+                    Button { details = item } label: {
+                        HStack {
+                            Text(item.title)
+                                .lineLimit(1)
+                                .strikethrough(item.isDone)
+                                .foregroundStyle(item.isDone ? .secondary : .primary)
+                            Spacer()
+                            Text(item.when).font(.caption).foregroundStyle(item.isOverdue ? .red : .secondary)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
                 }
+                .swipeActions(edge: .trailing) {
+                    if item.isReminder, canEdit {
+                        Button(item.isDone ? "Undo" : "Done", systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark") {
+                            Task { await model.setReminder(item, completed: !item.isDone) }
+                        }
+                        .tint(item.isDone ? .gray : .green)
+                    }
+                }
+            }
+        } header: {
+            Text("Today")
+        } footer: {
+            if s.today.contains(where: \.isReminder) {
+                Text(s.canEditReminders == true
+                     ? "Tap the circle (or swipe) to tick a reminder off. Calendar invitations can only be answered in Calendar."
+                     : "Ticking off reminders from iPhone is turned off on your Mac.")
             }
         }
     }
@@ -155,6 +195,53 @@ struct OverviewView: View {
             } footer: {
                 if s.automationsPaused { Text("Automations are paused on your Mac.") }
             }
+        }
+    }
+}
+
+/// A reminder's or event's details, with Done / Undo for reminders.
+private struct AgendaDetails: View {
+    @Environment(PhoneModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let item: RemoteSnapshot.AgendaItem
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(item.title).font(.title3.bold()).strikethrough(item.isDone)
+                    Label(item.when, systemImage: item.isReminder ? "calendar.badge.clock" : "clock")
+                        .foregroundStyle(item.isOverdue ? .red : .primary)
+                    if let source = item.source {
+                        Label(source, systemImage: item.isReminder ? "list.bullet" : "calendar")
+                    }
+                    if let location = item.location, !location.isEmpty {
+                        Label(location, systemImage: "mappin.and.ellipse")
+                    }
+                }
+                if let notes = item.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                    Section("Notes") { Text(notes).textSelection(.enabled) }
+                }
+                if item.isReminder, model.snapshot?.canEditReminders == true {
+                    Section {
+                        Button(item.isDone ? "Mark as Not Done" : "Mark as Done", systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark") {
+                            Task {
+                                await model.setReminder(item, completed: !item.isDone)
+                                dismiss()
+                            }
+                        }
+                        .disabled(model.connection != .connected)
+                    }
+                } else if !item.isReminder {
+                    Section {
+                        Text("Calendar invitations can only be accepted or declined in the Calendar app.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle(item.isReminder ? "Reminder" : "Event")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Done") { dismiss() } }
         }
     }
 }

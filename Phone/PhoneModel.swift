@@ -125,8 +125,9 @@ final class PhoneModel {
 
     private func receiveLoop(_ session: SecureSession) async {
         while !Task.isCancelled {
-            guard let event = try? await session.receive(ServerEvent.self) else { break }
-            handle(event)
+            guard let data = try? await session.receiveData() else { break }
+            // Skip anything a newer Mac sends that this app doesn't know yet.
+            if let event = try? RemoteCoding.decoder.decode(ServerEvent.self, from: data) { handle(event) }
         }
         guard self.session === session else { return }
         self.session = nil
@@ -181,6 +182,11 @@ final class PhoneModel {
     func stopEverything() async {
         guard await authenticate("Stop everything on your Mac") else { return }
         if let error = await request(.stopEverything).error { notice = error }
+    }
+
+    /// Tick a reminder off (or back on). Reversible, so no Face ID beyond unlocking the app.
+    func setReminder(_ item: RemoteSnapshot.AgendaItem, completed: Bool) async {
+        if let error = await request(.setReminder(id: item.id, completed: completed)).error { notice = error }
     }
 
     func openTranscript(_ id: String) async {

@@ -121,3 +121,26 @@ struct PairingCodeTests {
         #expect(code.isExpired())
     }
 }
+
+@Suite("Protocol compatibility")
+struct ProtocolCompatibilityTests {
+    @Test func olderSnapshotsStillDecode() throws {
+        // A snapshot from a Mac built before reminders could be edited from the phone.
+        let json = #"{"macName":"Mac","appName":"AgentX","date":"2026-11-17T10:00:00Z","usage":[],"approvals":[],"conversations":[],"today":[{"id":"r1","title":"Call Jayu","when":"Today","isReminder":true,"isOverdue":false}],"automations":[],"automationsPaused":false,"activity":[],"canApprove":true,"canMessage":true}"#
+        let snapshot = try RemoteCoding.decoder.decode(RemoteSnapshot.self, from: Data(json.utf8))
+        #expect(snapshot.today.first?.isDone == false)
+        #expect(snapshot.canEditReminders == nil)
+    }
+
+    @Test func anUnknownRequestStillHasAReadableID() throws {
+        let json = #"{"id":7,"request":{"somethingNew":{"x":1}}}"#
+        #expect(throws: (any Error).self) { _ = try RemoteCoding.decoder.decode(ClientEnvelope.self, from: Data(json.utf8)) }
+        #expect(try RemoteCoding.decoder.decode(RequestID.self, from: Data(json.utf8)).id == 7)
+    }
+
+    @Test func reminderRequestsRoundTrip() throws {
+        let envelope = ClientEnvelope(id: 3, request: .setReminder(id: "x-1", completed: true))
+        let data = try RemoteCoding.encoder.encode(envelope)
+        #expect(try RemoteCoding.decoder.decode(ClientEnvelope.self, from: data) == envelope)
+    }
+}

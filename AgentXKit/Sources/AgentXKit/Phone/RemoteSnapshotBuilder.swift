@@ -6,7 +6,7 @@ import Foundation
 enum RemoteSnapshotBuilder {
     static let macName = Host.current().localizedName ?? "Mac"
 
-    static func snapshot(_ model: AppModel, canApprove: Bool, canMessage: Bool) -> RemoteSnapshot {
+    static func snapshot(_ model: AppModel, canApprove: Bool, canMessage: Bool, canEditReminders: Bool = false) -> RemoteSnapshot {
         RemoteSnapshot(
             macName: macName,
             appName: AppChannel.current.displayName,
@@ -15,7 +15,7 @@ enum RemoteSnapshotBuilder {
             usage: model.usage.usage?.windows.map { .init(label: $0.label, fraction: $0.fraction, resetsAt: $0.resetsAt) } ?? [],
             approvals: model.sessions.approvals.map { approval(model, $0) },
             conversations: conversations(model.sessions),
-            today: today(model.today.agenda),
+            today: today(model.today.agenda, completed: model.today.completed),
             automations: model.automations.automations.map { a in
                 let last = model.automations.lastRun(of: a)
                 return .init(id: a.id.uuidString, name: a.name, next: model.automations.isPaused ? nil : model.automations.nextRun(of: a),
@@ -27,7 +27,8 @@ enum RemoteSnapshotBuilder {
                       detail: $0.detail, origin: $0.origin)
             },
             canApprove: canApprove,
-            canMessage: canMessage
+            canMessage: canMessage,
+            canEditReminders: canEditReminders
         )
     }
 
@@ -76,12 +77,14 @@ enum RemoteSnapshotBuilder {
         return result
     }
 
-    static func today(_ agenda: Agenda?) -> [RemoteSnapshot.AgendaItem] {
+    /// Today's events, open reminders, then reminders ticked off today (shown done, so they can be undone).
+    static func today(_ agenda: Agenda?, completed: [Agenda.Reminder] = []) -> [RemoteSnapshot.AgendaItem] {
         guard let agenda else { return [] }
         let events = agenda.events.map {
             RemoteSnapshot.AgendaItem(id: $0.id, title: $0.title,
-                                      when: $0.isAllDay ? "All day" : $0.start.formatted(.dateTime.hour().minute()),
-                                      isReminder: false, isOverdue: false)
+                                      when: $0.isAllDay ? "All day"
+                                          : "\($0.start.formatted(.dateTime.hour().minute()))–\($0.end.formatted(.dateTime.hour().minute()))",
+                                      isReminder: false, isOverdue: false, source: $0.calendar, location: $0.location, notes: $0.notes)
         }
         let reminders = agenda.reminders.map { r in
             let when: String = {
@@ -89,9 +92,14 @@ enum RemoteSnapshotBuilder {
                 if r.isOverdue { return "Overdue · " + due.formatted(.dateTime.day().month(.abbreviated)) }
                 return r.hasTime ? due.formatted(.dateTime.hour().minute()) : "Today"
             }()
-            return RemoteSnapshot.AgendaItem(id: r.id, title: r.title, when: when, isReminder: true, isOverdue: r.isOverdue)
+            return RemoteSnapshot.AgendaItem(id: r.id, title: r.title, when: when, isReminder: true, isOverdue: r.isOverdue,
+                                             done: false, source: r.list, notes: r.notes)
         }
-        return events + reminders
+        let done = completed.map {
+            RemoteSnapshot.AgendaItem(id: $0.id, title: $0.title, when: "Done", isReminder: true, isOverdue: false,
+                                      done: true, source: $0.list, notes: $0.notes)
+        }
+        return events + reminders + done
     }
 
     /// A conversation's messages for the phone: your messages, Claude's

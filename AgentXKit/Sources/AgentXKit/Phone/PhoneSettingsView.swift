@@ -61,6 +61,7 @@ struct PhoneSettingsView: View {
             Section {
                 Toggle("Answer approvals (confirmed with Face ID on the phone)", isOn: $link.allowApprovals)
                 Toggle("Message Claude on this Mac", isOn: $link.allowMessages)
+                Toggle("Tick off today's reminders", isOn: $link.allowReminders)
             } header: {
                 Text("What a paired iPhone can do")
             } footer: {

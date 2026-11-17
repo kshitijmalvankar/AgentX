@@ -15,6 +15,8 @@ public enum ClientRequest: Codable, Sendable, Equatable {
     case transcript(conversationID: String)
     /// Send a message to a conversation on the Mac (nil: start a new one).
     case send(conversationID: String?, text: String)
+    /// Tick a reminder off (or back on) from the Today list.
+    case setReminder(id: String, completed: Bool)
 }
 
 public struct ClientEnvelope: Codable, Sendable, Equatable {
@@ -106,9 +108,19 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public var when: String
         public var isReminder: Bool
         public var isOverdue: Bool
-        public init(id: String, title: String, when: String, isReminder: Bool, isOverdue: Bool) {
+        /// A reminder ticked off today (shown done, can be undone). Optional so older Macs still decode.
+        public var done: Bool?
+        /// The calendar or Reminders list.
+        public var source: String?
+        /// Location (events).
+        public var location: String?
+        public var notes: String?
+        public init(id: String, title: String, when: String, isReminder: Bool, isOverdue: Bool,
+                    done: Bool? = nil, source: String? = nil, location: String? = nil, notes: String? = nil) {
             self.id = id; self.title = title; self.when = when; self.isReminder = isReminder; self.isOverdue = isOverdue
+            self.done = done; self.source = source; self.location = location; self.notes = notes
         }
+        public var isDone: Bool { done ?? false }
     }
 
     public struct Automation: Codable, Sendable, Equatable, Identifiable {
@@ -153,15 +165,17 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// What this phone may do (set on the Mac in Settings → iPhone).
     public var canApprove: Bool
     public var canMessage: Bool
+    /// Optional so a snapshot from an older Mac still decodes (nil: no).
+    public var canEditReminders: Bool?
 
     public init(macName: String, appName: String, date: Date = Date(), planLabel: String? = nil, vitals: Vitals? = nil,
                 usage: [UsageLimit] = [], approvals: [Approval] = [], conversations: [Conversation] = [],
                 today: [AgendaItem] = [], automations: [Automation] = [], automationsPaused: Bool = false,
-                activity: [Activity] = [], canApprove: Bool = true, canMessage: Bool = true) {
+                activity: [Activity] = [], canApprove: Bool = true, canMessage: Bool = true, canEditReminders: Bool = false) {
         self.macName = macName; self.appName = appName; self.date = date; self.planLabel = planLabel; self.vitals = vitals
         self.usage = usage; self.approvals = approvals; self.conversations = conversations; self.today = today
         self.automations = automations; self.automationsPaused = automationsPaused; self.activity = activity
-        self.canApprove = canApprove; self.canMessage = canMessage
+        self.canApprove = canApprove; self.canMessage = canMessage; self.canEditReminders = canEditReminders
     }
 }
 
@@ -201,4 +215,9 @@ public enum RemoteCoding {
         d.dateDecodingStrategy = .iso8601
         return d
     }()
+}
+
+/// Just the id of a request, for answering one this side can't decode.
+public struct RequestID: Codable, Sendable {
+    public var id: Int
 }

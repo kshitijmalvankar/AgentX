@@ -120,9 +120,14 @@ public actor SecureSession {
 
     /// The next message. Only one receive loop may run per session.
     public func receive<T: Decodable & Sendable>(_ type: T.Type) async throws -> T {
+        try RemoteCoding.decoder.decode(T.self, from: try await receiveData())
+    }
+
+    /// The next message, decrypted but not decoded: lets a receive loop skip
+    /// a message it doesn't understand (from a newer app) and keep going.
+    public func receiveData() async throws -> Data {
         let frame = try await framed.receive()
-        let plaintext = try opener.open(frame)
-        return try RemoteCoding.decoder.decode(T.self, from: plaintext)
+        return try opener.open(frame)
     }
 
     public nonisolated func close() { framed.cancel() }
