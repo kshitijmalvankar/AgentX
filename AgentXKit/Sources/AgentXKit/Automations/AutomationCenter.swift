@@ -28,9 +28,20 @@ public final class AutomationCenter {
     /// Called after every save (e.g. to update the widgets).
     @ObservationIgnored var onChange: (() -> Void)?
 
-    public init(directory: URL = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Library/Application Support/AgentX")) {
+    /// While paused, scheduled runs are skipped (manual "Run now" still works).
+    /// AgentX Dev starts paused so it doesn't run your automations twice.
+    public var isPaused: Bool {
+        didSet { defaults.set(isPaused, forKey: Self.pausedKey) }
+    }
+    static let pausedKey = "automationsPaused"
+    @ObservationIgnored private let defaults: UserDefaults
+
+    public init(directory: URL = AppChannel.current.dataDirectory, defaults: UserDefaults = .standard,
+                pausedByDefault: Bool = AppChannel.current.isDev) {
         self.directory = directory
+        self.defaults = defaults
+        defaults.register(defaults: [Self.pausedKey: pausedByDefault])
+        isPaused = defaults.bool(forKey: Self.pausedKey)
         load()
     }
 
@@ -66,9 +77,8 @@ public final class AutomationCenter {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try encoder.encode(automations).write(to: automationsFile, options: .atomic)
-            try encoder.encode(Array(runs.prefix(200))).write(to: runsFile, options: .atomic)
+            try SecureFile.write(encoder.encode(automations), to: automationsFile)
+            try SecureFile.write(encoder.encode(Array(runs.prefix(200))), to: runsFile)
             storageError = nil
             onChange?()
         } catch {
@@ -143,7 +153,14 @@ public final class AutomationCenter {
 
     func tick(now: Date = Date()) {
         for automation in automations where automation.enabled && active[automation.id] == nil {
-            switch AutomationTiming.dueAction(for: automation, now: now) {
+            let due = AutomationTiming.dueAction(for: automation, now: now)
+            if isPaused {
+                // Skip it rather than queue it: resuming shouldn't set off a burst of catch-up runs.
+                if case .wait = due { continue }
+                markFired(automation.id, at: now)
+                continue
+            }
+            switch due {
             case .wait:
                 continue
             case .run(let trigger):

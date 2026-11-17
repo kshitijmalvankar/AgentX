@@ -34,6 +34,19 @@ struct AutomationsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                if center.isPaused {
+                    HStack(spacing: 10) {
+                        Image(systemName: "pause.circle.fill").foregroundStyle(.orange)
+                        Text(AppChannel.current.isDev
+                             ? "Paused in AgentX Dev, so your installed AgentX is the only one running automations. \"Run now\" still works."
+                             : "Automations are paused (Stop everything, or you paused them). \"Run now\" still works.")
+                            .font(.callout)
+                        Spacer()
+                        Button("Resume") { center.isPaused = false }.secondaryButton()
+                    }
+                    .padding(12)
+                    .glassEffect(.regular.tint(.orange.opacity(0.12)), in: .agentCard)
+                }
                 if let error = center.storageError {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout)
                 }
@@ -85,6 +98,8 @@ struct AutomationsView: View {
                         .foregroundStyle(.secondary)
                     Toggle("Open AgentX at login", isOn: $launchAtLogin)
                         .toggleStyle(.switch)
+                        .disabled(AppChannel.current.isDev)
+                        .help(AppChannel.current.isDev ? "Only the installed AgentX opens at login." : "")
                         .onChange(of: launchAtLogin) { _, on in
                             do {
                                 try LaunchAtLogin.set(on)

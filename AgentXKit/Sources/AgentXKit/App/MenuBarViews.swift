@@ -11,6 +11,9 @@ struct MenuBarLabel: View {
         Group {
             if approvals > 0 {
                 Label("\(approvals)", systemImage: "hand.raised.fill")
+            } else if AppChannel.current.isDev {
+                // AgentX Dev's icon looks different so you can tell the two apart.
+                Image(systemName: working ? "hammer.fill" : "hammer")
             } else {
                 Image(systemName: working ? "sparkles" : "sparkle")
             }
@@ -30,7 +33,13 @@ struct MenuBarContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("AgentX").font(.headline)
+                Text(AppChannel.current.displayName).font(.headline)
+                if model.automations.isPaused {
+                    Label("Automations paused", systemImage: "pause.circle")
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(.secondary)
+                        .help("Automations are paused. Turn them back on in Automations.")
+                }
                 Spacer()
                 Text(model.account?.account.planLabel ?? model.client.statusMessage)
                     .font(.caption)

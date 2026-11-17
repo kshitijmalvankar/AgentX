@@ -1,0 +1,11 @@
+// Copy to Config/Local.xcconfig (git-ignored) to sign with your own Apple
+// Development certificate. It's free: add your Apple ID in Xcode → Settings →
+// Accounts, then find your team id with:
+//     security find-identity -v -p codesigning
+// (the 10 characters in parentheses at the end of "Apple Development: …").
+//
+// A stable signature means macOS remembers Accessibility, Screen Recording
+// and Automation permissions across rebuilds and updates.
+AGENTX_SIGN_IDENTITY = Apple Development
+AGENTX_SIGN_STYLE = Manual
+AGENTX_TEAM = ABCDE12345

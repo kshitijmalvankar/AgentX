@@ -3,8 +3,11 @@ import KeyboardShortcuts
 import SwiftUI
 
 extension KeyboardShortcuts.Name {
-    /// Opens the launcher from anywhere. Changeable in Settings.
-    static let toggleLauncher = Self("toggleLauncher", initial: .init(.space, modifiers: [.option]))
+    /// Opens the launcher from anywhere. Changeable in Settings. AgentX Dev
+    /// defaults to ⌃⌥Space so it doesn't fight the installed app for ⌥Space.
+    static let toggleLauncher = Self("toggleLauncher", initial: AppChannel.current.isDev
+        ? .init(.space, modifiers: [.control, .option])
+        : .init(.space, modifiers: [.option]))
 }
 
 /// The floating ⌥Space launcher: ask the assistant anything, or

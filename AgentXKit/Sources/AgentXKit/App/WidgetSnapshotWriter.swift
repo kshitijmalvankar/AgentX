@@ -50,7 +50,10 @@ final class WidgetSnapshotWriter {
 
         let snapshot = Self.compose(model: model, system: s)
         do {
-            try snapshot.save()
+            let url = AppChannel.current.dataFile("widget-snapshot.json")
+            try snapshot.save(to: url)
+            // Only you (and the widgets, which run as you) can read it.
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             WidgetCenter.shared.reloadAllTimelines()
         } catch {
             // Widgets keep their last data; nothing else depends on this file.

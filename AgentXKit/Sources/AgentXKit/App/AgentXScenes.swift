@@ -13,7 +13,7 @@ public struct AgentXScenes: Scene {
     public init() {}
 
     public var body: some Scene {
-        Window("AgentX", id: "main") {
+        Window(AppChannel.current.displayName, id: "main") {
             RootView()
                 .environment(model)
                 .task { await model.bootstrap() }
@@ -55,6 +55,8 @@ public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
         // Needed when running the bare `AgentXDev` binary (no .app bundle).
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         NSApp.activate()
+        // AgentX Dev wears a badge so it's never mistaken for the installed app.
+        if AppChannel.current.isDev { NSApp.dockTile.badgeLabel = "DEV" }
         LauncherController.registerHotkey()
         // Start the engine (and the automation scheduler) even if no window opens.
         Task { await AppModel.shared.bootstrap() }

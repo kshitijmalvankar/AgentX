@@ -1,0 +1,15 @@
+// Settings shared by every AgentX build (the project uses this for Debug and Release).
+//
+// By default you build **AgentX Dev**: its own name, bundle id, data folder,
+// hotkey and URL scheme, so it can run next to the installed app.
+// scripts/install.sh builds the installed **AgentX** with Stable.xcconfig on top.
+#include "Dev.xcconfig"
+
+// Signing. Ad-hoc ("-") works without an Apple account, but macOS then forgets
+// permissions like Accessibility after every build. Copy Local.xcconfig.example
+// to Local.xcconfig (git-ignored) and put your team there to fix that.
+AGENTX_SIGN_IDENTITY = -
+AGENTX_SIGN_STYLE = Manual
+AGENTX_TEAM =
+
+#include? "Local.xcconfig"

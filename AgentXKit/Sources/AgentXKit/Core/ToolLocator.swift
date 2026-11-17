@@ -8,6 +8,22 @@ public struct ToolPaths: Sendable, Equatable, Codable {
     public var claude: String?
     /// The agent-core folder (contains src/index.ts and node_modules).
     public var agentCore: String?
+
+    /// The Claude Code binary the Agent SDK ships inside agent-core. AgentX
+    /// checks Anthropic's signature on it and tells the SDK to use exactly it.
+    public var engineClaude: String? {
+        guard let agentCore else { return nil }
+        #if arch(arm64)
+        let arch = "arm64"
+        #else
+        let arch = "x64"
+        #endif
+        let path = "\(agentCore)/node_modules/@anthropic-ai/claude-agent-sdk-darwin-\(arch)/claude"
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
+    /// True when agent-core is the copy inside the app bundle (installed builds).
+    public var agentCoreIsEmbedded: Bool { agentCore != nil && agentCore == ToolLocator.embeddedAgentCore }
     /// PATH from your login shell. Apps launched from Finder get a minimal
     /// PATH, so we borrow your shell's so Claude's Bash tool finds git, npm, ...
     public var shellPath: String
@@ -17,6 +33,13 @@ public struct ToolPaths: Sendable, Equatable, Codable {
 public enum ToolLocator {
     public static let nodePathOverrideKey = "nodePathOverride"
     public static let agentCorePathOverrideKey = "agentCorePathOverride"
+
+    /// agent-core inside the app bundle (put there by scripts/install.sh).
+    static var embeddedAgentCore: String? {
+        guard let path = Bundle.main.resourceURL?.appendingPathComponent("agent-core").path,
+              FileManager.default.fileExists(atPath: "\(path)/src/index.ts") else { return nil }
+        return path
+    }
 
     /// Variables child processes (agent-core, Claude Code, the Terminal tab)
     /// may inherit from AgentX. Everything else is dropped: if AgentX itself
@@ -51,6 +74,7 @@ public enum ToolLocator {
               let paths = try? JSONDecoder().decode(ToolPaths.self, from: data),
               let node = paths.node, FileManager.default.isExecutableFile(atPath: node),
               let core = paths.agentCore, FileManager.default.fileExists(atPath: "\(core)/src/index.ts"),
+              AppChannel.current.isDev || core == embeddedAgentCore,
               UserDefaults.standard.string(forKey: nodePathOverrideKey).map({ $0.isEmpty || $0 == node }) ?? true,
               UserDefaults.standard.string(forKey: agentCorePathOverrideKey).map({ $0.isEmpty || $0 == core }) ?? true
         else { return nil }
@@ -78,12 +102,16 @@ public enum ToolLocator {
         let shell = loginShellLookup()
         let shellPath = shell.path ?? env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
 
-        let agentCore = firstExisting([
-            defaults.string(forKey: agentCorePathOverrideKey),
-            env["AGENTX_CORE_PATH"],
-            Bundle.main.object(forInfoDictionaryKey: "AgentXCorePath") as? String,
-            Bundle.main.resourceURL?.appendingPathComponent("agent-core").path,
-        ], isDirectory: true)
+        // The installed app only ever runs the agent-core inside its own
+        // (signed) bundle, never code from the repo or a path someone set.
+        let agentCore = AppChannel.current.isDev
+            ? firstExisting([
+                defaults.string(forKey: agentCorePathOverrideKey),
+                env["AGENTX_CORE_PATH"],
+                Bundle.main.object(forInfoDictionaryKey: "AgentXCorePath") as? String,
+                embeddedAgentCore,
+            ], isDirectory: true)
+            : embeddedAgentCore
 
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let node = firstExisting([

@@ -9,10 +9,10 @@ public enum ConversationKind: String, Sendable {
 
 /// Where assistant conversations run (kept out of the coding Sessions list).
 public enum AssistantWorkspace {
-    public static let path: String = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/AgentX/Assistant").path
+    public static let path: String = AppChannel.current.dataDirectory.appendingPathComponent("Assistant").path
 
     static func prepare() {
+        try? SecureFile.prepareDirectory(AppChannel.current.dataDirectory)
         try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
     }
 

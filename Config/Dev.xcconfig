@@ -1,0 +1,9 @@
+// AgentX Dev: built from your working copy by scripts/run-dev.sh (and Xcode).
+AGENTX_CHANNEL = dev
+AGENTX_PRODUCT_NAME = AgentX Dev
+AGENTX_BUNDLE_ID_SUFFIX = .dev
+AGENTX_URL_SCHEME = agentx-dev
+// Dev runs agent-core straight from the repo, so edits apply on restart.
+AGENTX_CORE_PATH = $(SRCROOT)/agent-core
+// Only install.sh embeds agent-core in the app.
+AGENTX_EMBED_CORE_FROM =

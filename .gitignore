@@ -15,5 +15,6 @@ agent-core/node_modules/
 agent-core/dist/
 
 # Local
+Config/Local.xcconfig
 .env
 *.log

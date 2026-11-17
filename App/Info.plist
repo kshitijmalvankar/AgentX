@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>AgentX</string>
+	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,25 +13,28 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>AgentX</string>
+	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<!-- agentx://system etc. open a section (used by the widgets). -->
+	<!-- agentx://system etc. open a section (used by the widgets); AgentX Dev uses agentx-dev://. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.agentx.AgentX</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>agentx</string>
+				<string>$(AGENTX_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- "stable" (installed with scripts/install.sh) or "dev" (scripts/run-dev.sh): see Core/AppChannel.swift. -->
+	<key>AgentXChannel</key>
+	<string>$(AGENTX_CHANNEL)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
@@ -48,7 +51,7 @@
 	<string>AgentX uses the microphone only when you use voice mode in Claude chats.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>AgentX, powered by Claude.</string>
-	<!-- Development: where the agent-core sidecar lives (the repo checkout). -->
+	<!-- AgentX Dev only: where the agent-core sidecar lives (the repo checkout). Empty in installed builds. -->
 	<key>AgentXCorePath</key>
 	<string>$(AGENTX_CORE_PATH)</string>
 </dict>

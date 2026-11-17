@@ -1,0 +1,8 @@
+// The installed AgentX, built by scripts/install.sh from a committed state.
+// Passed with `xcodebuild -xcconfig`, so these win over Dev.xcconfig.
+AGENTX_CHANNEL = stable
+AGENTX_PRODUCT_NAME = AgentX
+AGENTX_BUNDLE_ID_SUFFIX =
+AGENTX_URL_SCHEME = agentx
+// The installed app never points at the repo: it runs the agent-core embedded in its bundle.
+AGENTX_CORE_PATH =

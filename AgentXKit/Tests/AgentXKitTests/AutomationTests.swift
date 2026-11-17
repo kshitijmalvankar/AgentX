@@ -72,10 +72,14 @@ struct AutomationCenterTests {
         #expect(reloaded.upcoming.count == 1)
     }
 
+    func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "agentx-tests-\(UUID().uuidString)")!
+    }
+
     @Test func longMissedRunsAreRecordedAsSkipped() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let center = AutomationCenter(directory: dir)
+        let center = AutomationCenter(directory: dir, defaults: freshDefaults(), pausedByDefault: false)
         var a = center.automations[1]
         a.enabled = true
         center.update(a)
@@ -86,6 +90,27 @@ struct AutomationCenterTests {
         center.tick(now: Date())
         let run = try #require(center.runs.first)
         #expect(run.status == .skipped && run.automationName == "Repo check")
+    }
+
+    @Test func pausedAutomationsSkipQuietlyWithoutCatchUp() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let defaults = freshDefaults()
+        let center = AutomationCenter(directory: dir, defaults: defaults, pausedByDefault: true)
+        #expect(center.isPaused, "AgentX Dev starts with automations paused")
+        var a = center.automations[0]
+        a.enabled = true
+        center.update(a)
+        var due = try #require(center.automations.first { $0.id == a.id })
+        due.lastScheduledAt = Date().addingTimeInterval(-2 * 86_400)
+        center.update(due)
+        center.tick(now: Date())
+        #expect(center.runs.isEmpty, "nothing runs while paused")
+        let after = try #require(center.automations.first { $0.id == a.id })
+        #expect(abs(after.lastScheduledAt!.timeIntervalSinceNow) < 5, "the missed run is skipped, so resuming doesn't set off a catch-up")
+
+        center.isPaused = false
+        #expect(AutomationCenter(directory: dir, defaults: defaults, pausedByDefault: true).isPaused == false, "the choice is remembered")
     }
 
     @Test func unansweredApprovalsInUnattendedRunsAreDenied() async throws {
