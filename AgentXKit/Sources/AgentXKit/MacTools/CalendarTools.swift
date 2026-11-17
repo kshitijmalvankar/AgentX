@@ -25,22 +25,73 @@ actor CalendarService {
         }
     }
 
-    func events(from start: Date, to end: Date, matching text: String?, calendar: String?) async throws -> String {
-        try await ensureAccess(to: .event)
-        let calendars = try calendar.map { [try findCalendar(named: $0, for: .event)] }
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
-        var events = store.events(matching: predicate).sorted { $0.startDate < $1.startDate }
-        if let text, !text.isEmpty {
-            events = events.filter { ($0.title ?? "").localizedCaseInsensitiveContains(text) || ($0.location ?? "").localizedCaseInsensitiveContains(text) || ($0.notes ?? "").localizedCaseInsensitiveContains(text) }
+    static func access(to type: EKEntityType) -> CalendarAccess {
+        switch EKEventStore.authorizationStatus(for: type) {
+        case .fullAccess: .granted
+        case .notDetermined: .notDetermined
+        default: .denied
         }
-        guard !events.isEmpty else { return "No events between \(ToolDates.describe(start)) and \(ToolDates.describe(end))." }
-        return events.prefix(60).map { e in
-            var line = e.isAllDay ? "• \(ToolDates.describe(e.startDate, allDay: true)), all day: " : "• \(ToolDates.describe(e.startDate))–\(ToolDates.time(e.endDate)): "
-            line += e.title ?? "(no title)"
-            line += " [\(e.calendar.title)]"
-            if let location = e.location, !location.isEmpty { line += " @ \(location)" }
-            return line
-        }.joined(separator: "\n")
+    }
+
+    /// Ask macOS for Calendar and Reminders access (only shows prompts not answered before).
+    func requestAccess() async {
+        for type in [EKEntityType.event, .reminder] where Self.access(to: type) == .notDetermined {
+            _ = try? await ensureAccess(to: type)
+        }
+    }
+
+    /// Events and open reminders between `start` and `end`. When the range
+    /// starts today or earlier, overdue reminders are included too: macOS
+    /// Calendar shows scheduled reminders, so "what's on my calendar" means both.
+    /// With `prompt` false (the dashboard), it never shows a permission prompt.
+    func agenda(from start: Date, to end: Date, matching text: String? = nil, calendar: String? = nil, prompt: Bool) async throws -> Agenda {
+        var agenda = Agenda(start: start, end: end)
+        let now = Date()
+
+        if prompt { try await ensureAccess(to: .event) }
+        agenda.eventsAccess = Self.access(to: .event)
+        if agenda.eventsAccess == .granted {
+            let calendars = try calendar.map { [try findCalendar(named: $0, for: .event)] }
+            var events = store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: calendars))
+                .sorted { $0.startDate < $1.startDate }
+            if let text, !text.isEmpty {
+                events = events.filter { ($0.title ?? "").localizedCaseInsensitiveContains(text) || ($0.location ?? "").localizedCaseInsensitiveContains(text) || ($0.notes ?? "").localizedCaseInsensitiveContains(text) }
+            }
+            agenda.events = events.map { e in
+                Agenda.Event(id: e.calendarItemIdentifier + "\(e.startDate.timeIntervalSince1970)", title: e.title ?? "(no title)",
+                             start: e.startDate, end: e.endDate, isAllDay: e.isAllDay, calendar: e.calendar.title,
+                             color: Self.rgb(e.calendar.cgColor), location: e.location)
+            }
+        }
+
+        // Reminders are a bonus here: if access is missing, say so instead of failing.
+        if prompt, Self.access(to: .reminder) == .notDetermined { _ = try? await ensureAccess(to: .reminder) }
+        agenda.remindersAccess = Self.access(to: .reminder)
+        // Asked about one calendar: only a Reminders list of the same name counts.
+        let lists: [EKCalendar]? = calendar.flatMap { name in try? [findCalendar(named: name, for: .reminder)] }
+        if agenda.remindersAccess == .granted, calendar == nil || lists != nil {
+            let predicate = store.predicateForIncompleteReminders(withDueDateStarting: start <= now ? nil : start, ending: end, calendars: lists)
+            let found: [Agenda.Reminder] = await withCheckedContinuation { cont in
+                store.fetchReminders(matching: predicate) { reminders in
+                    cont.resume(returning: (reminders ?? []).compactMap { r in
+                        guard let due = Agenda.dueDate(r.dueDateComponents) else { return nil }
+                        return Agenda.Reminder(id: r.calendarItemIdentifier, title: r.title ?? "(no title)", due: due.date,
+                                               hasTime: due.hasTime, list: r.calendar.title, color: Self.rgb(r.calendar.cgColor),
+                                               isOverdue: Agenda.isOverdue(due.date, today: now))
+                    })
+                }
+            }
+            var reminders = found.filter { ($0.due ?? .distantPast) < end }.sorted { ($0.due ?? .distantPast) < ($1.due ?? .distantPast) }
+            if let text, !text.isEmpty { reminders = reminders.filter { $0.title.localizedCaseInsensitiveContains(text) } }
+            agenda.reminders = reminders
+        }
+        return agenda
+    }
+
+    private static func rgb(_ color: CGColor?) -> Agenda.RGB? {
+        guard let c = color?.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil),
+              let comps = c.components, comps.count >= 3 else { return nil }
+        return Agenda.RGB(red: Double(comps[0]), green: Double(comps[1]), blue: Double(comps[2]))
     }
 
     func createEvent(title: String, start: Date, end: Date, location: String?, notes: String?, calendar: String?) async throws -> String {
@@ -66,11 +117,13 @@ actor CalendarService {
         let lines: [String] = await withCheckedContinuation { cont in
             store.fetchReminders(matching: predicate) { reminders in
                 let sorted = (reminders ?? []).sorted {
-                    ($0.dueDateComponents?.date ?? .distantFuture) < ($1.dueDateComponents?.date ?? .distantFuture)
+                    (Agenda.dueDate($0.dueDateComponents)?.date ?? .distantFuture) < (Agenda.dueDate($1.dueDateComponents)?.date ?? .distantFuture)
                 }
                 cont.resume(returning: sorted.prefix(80).map { r in
                     var line = "• \(r.isCompleted ? "[done] " : "")\(r.title ?? "(no title)") [\(r.calendar.title)]"
-                    if let due = r.dueDateComponents?.date { line += " due \(ToolDates.describe(due))" }
+                    if let due = Agenda.dueDate(r.dueDateComponents) {
+                        line += " due " + (due.hasTime ? ToolDates.describe(due.date) : ToolDates.describe(due.date, allDay: true))
+                    }
                     return line
                 })
             }
@@ -118,8 +171,8 @@ actor CalendarService {
 
 enum CalendarTools {
     static var all: [MacTool] {[
-        MacTool("calendar_events", area: "Calendar", summary: "List events", risk: .read,
-                description: "List Calendar events in a time range (local time). Defaults to today. Use for questions like \"what's on my calendar\".",
+        MacTool("calendar_events", area: "Calendar", summary: "List events and reminders due", risk: .read,
+                description: "List Calendar events and the open reminders due in a time range (local time), like the Calendar app shows them. Defaults to today, and then also lists overdue reminders. Use for questions like \"what's on my calendar\", \"what do I have today\" or \"what's my day like\".",
                 parameters: [
                     .init("start", .string, "Range start, local ISO 8601 (e.g. 2026-11-16T00:00). Defaults to the start of today.", required: false),
                     .init("end", .string, "Range end, local ISO 8601. Defaults to the end of the start day.", required: false),
@@ -128,7 +181,9 @@ enum CalendarTools {
                 ], untrustedSource: "calendar events (invites can come from anyone)") { args in
             let start = try args.optionalDate("start") ?? Calendar.current.startOfDay(for: Date())
             let end = try args.optionalDate("end") ?? Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: start))!
-            return try await CalendarService.shared.events(from: start, to: end, matching: args.optionalString("search"), calendar: args.optionalString("calendar"))
+            guard end > start else { throw ToolError("The end must be after the start.") }
+            return try await CalendarService.shared.agenda(from: start, to: end, matching: args.optionalString("search"),
+                                                           calendar: args.optionalString("calendar"), prompt: true).text
         },
         MacTool("calendar_create_event", area: "Calendar", summary: "Create an event", risk: .create,
                 description: "Create a Calendar event. Give start and either end or durationMinutes (default 60).",
@@ -149,7 +204,7 @@ enum CalendarTools {
                                                                  calendar: args.optionalString("calendar"))
         },
         MacTool("reminders_list", area: "Reminders", summary: "List reminders", risk: .read,
-                description: "List open reminders (or all, including completed), sorted by due date.",
+                description: "List open reminders (or all, including completed), sorted by due date. For what's due today, calendar_events already includes reminders.",
                 parameters: [
                     .init("list", .string, "Only this Reminders list (by name).", required: false),
                     .init("includeCompleted", .boolean, "Include completed reminders.", required: false),
