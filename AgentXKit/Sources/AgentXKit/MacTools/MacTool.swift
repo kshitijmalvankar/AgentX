@@ -70,7 +70,7 @@ public struct MacTool: Sendable, Identifiable {
     public let untrustedSource: String?
     /// Only for conversations someone is watching (never for scheduled or triggered runs).
     public let attendedOnly: Bool
-    let run: @Sendable (ToolArguments) async throws -> String
+    let run: @Sendable (ToolArguments) async throws -> ToolOutput
 
     public var id: String { name }
     public var qualifiedName: String { "mcp__agentx__\(name)" }
@@ -78,6 +78,14 @@ public struct MacTool: Sendable, Identifiable {
     init(_ name: String, area: String, summary: String, risk: ToolRisk, description: String,
          parameters: [ToolParameter] = [], untrustedSource: String? = nil, attendedOnly: Bool = false,
          run: @escaping @Sendable (ToolArguments) async throws -> String) {
+        self.init(name, area: area, summary: summary, risk: risk, description: description, parameters: parameters,
+                  untrustedSource: untrustedSource, attendedOnly: attendedOnly, output: { ToolOutput(text: try await run($0)) })
+    }
+
+    /// A tool whose result can include an image (screen_look).
+    init(_ name: String, area: String, summary: String, risk: ToolRisk, description: String,
+         parameters: [ToolParameter] = [], untrustedSource: String? = nil, attendedOnly: Bool = false,
+         output: @escaping @Sendable (ToolArguments) async throws -> ToolOutput) {
         self.name = name
         self.area = area
         self.summary = summary
@@ -86,7 +94,7 @@ public struct MacTool: Sendable, Identifiable {
         self.parameters = parameters
         self.untrustedSource = untrustedSource
         self.attendedOnly = attendedOnly
-        self.run = run
+        self.run = output
     }
 
     var definition: JSONValue {
@@ -96,6 +104,17 @@ public struct MacTool: Sendable, Identifiable {
         if attendedOnly { o["attendedOnly"] = true }
         return .object(o)
     }
+}
+
+/// What a tool gives back: text, and optionally an image.
+struct ToolOutput: Sendable {
+    var text: String
+    var image: ToolImage?
+}
+
+struct ToolImage: Sendable {
+    var data: Data
+    var mediaType: String
 }
 
 /// A tool failure Claude should see as a readable message.
@@ -108,6 +127,8 @@ public struct ToolError: LocalizedError, Sendable {
 /// Typed access to the arguments Claude passed.
 public struct ToolArguments: Sendable {
     let values: JSONValue
+    /// The conversation that called the tool (for "where this came from").
+    var origin: String? = nil
 
     func string(_ name: String) throws -> String {
         guard let s = values[name]?.string?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else {

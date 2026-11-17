@@ -129,7 +129,8 @@ public final class AppModel {
         client.requestHandler = { [weak self] method, params, id in
             guard let self else { throw AgentError.notRunning("App is shutting down.") }
             if method == "tool.invoke" {
-                return await MacToolbox.invoke(name: params["name"]?.string ?? "", arguments: params["args"] ?? [:])
+                let origin = self.sessions.origin(forHandle: params["handle"]?.string ?? "")?.title
+                return await MacToolbox.invoke(name: params["name"]?.string ?? "", arguments: params["args"] ?? [:], origin: origin)
             }
             return try await self.sessions.handleRequest(method, params: params, id: id)
         }

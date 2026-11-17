@@ -169,13 +169,17 @@ enum MacToolbox {
     static var definitions: JSONValue { .array(tools.map(\.definition)) }
 
     /// Run a tool for Claude. Failures come back as readable text with isError set.
-    static func invoke(name: String, arguments: JSONValue) async -> JSONValue {
+    static func invoke(name: String, arguments: JSONValue, origin: String? = nil) async -> JSONValue {
         guard let tool = tool(named: name) else {
             return ["text": .string("AgentX has no tool named \(name)."), "isError": true]
         }
         do {
-            let text = try await tool.run(ToolArguments(values: arguments))
-            return ["text": .string(text), "isError": false]
+            let output = try await tool.run(ToolArguments(values: arguments, origin: origin))
+            var result: [String: JSONValue] = ["text": .string(output.text), "isError": false]
+            if let image = output.image {
+                result["image"] = ["data": .string(image.data.base64EncodedString()), "mimeType": .string(image.mediaType)]
+            }
+            return .object(result)
         } catch {
             return ["text": .string(error.localizedDescription), "isError": true]
         }
