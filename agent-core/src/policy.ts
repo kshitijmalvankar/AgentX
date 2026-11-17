@@ -103,6 +103,8 @@ export type PolicyOptions = {
   pathExceptions?: string[];
   /** Started by a schedule or trigger: nobody is watching, so it starts tainted. */
   unattended?: boolean;
+  /** Already tainted when it starts (e.g. text carried over from claude.ai, or a resumed tainted conversation). */
+  initialTaint?: string;
   /** Tool name (mcp__agentx__x) → what its results are, for tools that return untrusted content. */
   untrustedTools?: Record<string, string>;
   /** mcp__agentx__ tools in the "ask" tier. */
@@ -189,6 +191,7 @@ export class SessionPolicy {
   constructor(opts: PolicyOptions) {
     this.opts = opts;
     if (opts.unattended) this.taint = "it was started by a schedule or trigger, not by you";
+    else if (opts.initialTaint?.trim()) this.taint = opts.initialTaint.trim();
   }
 
   get tainted(): boolean {

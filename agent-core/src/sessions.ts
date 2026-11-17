@@ -74,6 +74,8 @@ type StartParams = {
   allowedTools?: string[];
   /** Started by a schedule or trigger: starts tainted, no attended-only tools, rate-limited. */
   unattended?: boolean;
+  /** Start as having read untrusted content (text carried over from claude.ai, a resumed tainted conversation). */
+  taint?: string;
 };
 
 type PermissionAnswer = { behavior: "allow" | "allowAlways" | "deny"; message?: string };
@@ -107,6 +109,7 @@ class LiveSession {
           trustedRoots: security.trustedRoots,
           pathExceptions: security.pathExceptions,
           unattended,
+          initialTaint: params.taint,
           untrustedTools: untrustedToolSources(),
           askTierTools: askTierTools(),
         })

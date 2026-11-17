@@ -180,3 +180,10 @@ test("a symlink into a protected folder is blocked", async () => {
   assert.equal(p.beforeTool("Read", { file_path: join(fakeHome, "Desktop", "keys", "id_ed25519") }).decision, "deny");
   assert.equal(p.beforeTool("Read", { file_path: join(fakeHome, "Desktop", "notes.txt") }).decision, "allow-default");
 });
+
+test("a conversation can start already tainted (carried-over text, resumed conversation)", () => {
+  const p = policy({ initialTaint: "text carried over from claude.ai" });
+  assert.equal(p.taint, "text carried over from claude.ai");
+  assert.equal(p.beforeTool("WebFetch", { url: "https://example.com" }).decision, "ask");
+  assert.equal(policy({ initialTaint: "   " }).tainted, false);
+});
