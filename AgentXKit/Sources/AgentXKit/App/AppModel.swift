@@ -75,6 +75,8 @@ public final class AppModel {
     public let usage: UsageStore
     /// What Claude and AgentX did that changed something, and every security decision.
     public let activity = ActivityLog()
+    /// Today's events and reminders (the dashboard's Today card).
+    public let today = TodayAgenda()
     /// Anthropic's signature on the Claude Code engine binary (nil while checking).
     public private(set) var engineSignature: CodeSignature.Status?
     /// Folder to preselect the next time the New Session sheet opens.

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The home screen: account, agents at work, recent sessions, and slots for
-/// the pillars still to come.
+/// The home screen: account, agents at work, recent sessions, today's agenda,
+/// vitals, automations and GitHub.
 struct DashboardView: View {
     @Environment(AppModel.self) private var model
 
@@ -16,7 +16,7 @@ struct DashboardView: View {
                     AccountCard()
                     RecentSessionsCard()
                     VitalsCard()
-                    upcoming("Today", symbol: "calendar", text: "Your agenda and reminders, from Calendar.", milestone: "M3")
+                    TodayCard()
                     AutomationsCard()
                 }
                 GitHubActivityCard()
@@ -51,14 +51,6 @@ struct DashboardView: View {
         }
     }
 
-    private func upcoming(_ title: String, symbol: String, text: String, milestone: String) -> some View {
-        GlassCard(title, symbol: symbol) {
-            Text(milestone).font(.caption.bold()).foregroundStyle(.secondary)
-        } content: {
-            Text(text).foregroundStyle(.secondary)
-        }
-        .frame(minHeight: 140)
-    }
 }
 
 /// CPU, memory, disk and battery at a glance; Details opens System.
