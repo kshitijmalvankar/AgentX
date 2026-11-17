@@ -256,6 +256,9 @@ public final class RemoteServer: @unchecked Sendable {
         listener = nil
     }
 
+    /// Never leave a port open behind a server nobody holds any more.
+    deinit { listener?.cancel() }
+
     private func accept(_ connection: NWConnection) {
         let host: String? = { if case .hostPort(let h, _) = connection.endpoint { return "\(h)" } else { return nil } }()
         if let host, isThrottled(host) {
