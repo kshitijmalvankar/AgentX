@@ -4,11 +4,15 @@ name: AgentX
 options:
   deploymentTarget:
     macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 
 packages:
   AgentXKit:
     path: AgentXKit
+  # The encrypted Mac ↔ iPhone link, shared by both apps.
+  RemoteKit:
+    path: RemoteKit
 
 # Channel (AgentX Dev by default, AgentX via scripts/install.sh) and signing.
 configFiles:
@@ -89,10 +93,40 @@ targets:
         DEVELOPMENT_TEAM: $(AGENTX_TEAM)
         SKIP_INSTALL: YES
 
+  # The iPhone companion (Settings → iPhone on the Mac pairs it).
+  # Build and install it on your iPhone with scripts/run-phone.sh.
+  AgentXPhone:
+    type: application
+    platform: iOS
+    sources:
+      - path: Phone
+        excludes: ["Info.plist"]
+    dependencies:
+      - package: RemoteKit
+        product: AgentXRemote
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.agentx.AgentX.phone
+        PRODUCT_NAME: AgentXPhone
+        INFOPLIST_FILE: Phone/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        # iOS needs a provisioning profile: Xcode makes one for your team (a free account works).
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: $(AGENTX_TEAM)
+
 schemes:
   AgentX:
     build:
       targets:
         AgentX: all
+    run:
+      config: Debug
+  AgentXPhone:
+    build:
+      targets:
+        AgentXPhone: all
     run:
       config: Debug
