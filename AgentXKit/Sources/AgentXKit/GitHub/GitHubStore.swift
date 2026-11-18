@@ -13,6 +13,8 @@ public final class GitHubStore {
 
     public private(set) var state: State = .idle
     public private(set) var snapshot: GitHubSnapshot?
+    /// Your open pull requests and the ones waiting for your review (dashboard).
+    public private(set) var pullRequests: GitHubPullRequests?
     /// "owner/repo" (lowercased) → clone on this Mac.
     public private(set) var clones: [String: LocalClone] = [:]
     public private(set) var isRefreshing = false
@@ -51,6 +53,7 @@ public final class GitHubStore {
             do {
                 snapshot = try await GitHubService.fetch(gh: gh, path: path)
                 state = .loaded
+                pullRequests = try? await GitHubService.fetchPullRequests(gh: gh, path: path)
                 onUpdate?()
             } catch GitHubError.notSignedIn {
                 state = .needsSignIn

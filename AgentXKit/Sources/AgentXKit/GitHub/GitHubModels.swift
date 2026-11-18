@@ -90,6 +90,32 @@ public struct LocalClone: Sendable, Equatable {
     }
 }
 
+/// An open pull request: yours, or one waiting for your review.
+public struct GitHubPullRequest: Sendable, Identifiable, Hashable {
+    public enum Checks: String, Sendable { case passing, failing, pending, none }
+
+    public var url: URL
+    public var title: String
+    public var number: Int
+    public var repo: String
+    public var author: String?
+    public var isDraft: Bool
+    public var updatedAt: Date?
+    public var checks: Checks
+    /// APPROVED, CHANGES_REQUESTED or REVIEW_REQUIRED (nil when the repo doesn't require reviews).
+    public var review: String?
+
+    public var id: String { url.absoluteString }
+    public var repoName: String { repo.split(separator: "/").last.map(String.init) ?? repo }
+}
+
+public struct GitHubPullRequests: Sendable, Equatable {
+    public var mine: [GitHubPullRequest]
+    public var toReview: [GitHubPullRequest]
+    public var fetchedAt: Date
+    public var failing: Int { mine.filter { $0.checks == .failing }.count }
+}
+
 public struct GitHubSnapshot: Sendable, Equatable {
     public var profile: GitHubProfile
     public var calendar: ContributionCalendar
@@ -121,6 +147,29 @@ enum GitHubParser {
             }
         }
         return ContributionCalendar(total: raw?["totalContributions"]?.int ?? 0, weeks: weeks.filter { !$0.isEmpty })
+    }
+
+    static func pullRequests(_ json: JSONValue, now: Date = Date()) -> GitHubPullRequests {
+        let iso = ISO8601DateFormatter()
+        func pr(_ n: JSONValue) -> GitHubPullRequest? {
+            guard let url = n["url"]?.string.flatMap(URL.init(string:)), let title = n["title"]?.string else { return nil }
+            let state = n["commits"]?["nodes"]?.array?.last?["commit"]?["statusCheckRollup"]?["state"]?.string
+            let checks: GitHubPullRequest.Checks = switch state {
+            case "SUCCESS": .passing
+            case "FAILURE", "ERROR": .failing
+            case "PENDING", "EXPECTED": .pending
+            default: .none
+            }
+            return GitHubPullRequest(url: url, title: title, number: n["number"]?.int ?? 0,
+                                     repo: n["repository"]?["nameWithOwner"]?.string ?? "",
+                                     author: n["author"]?["login"]?.string, isDraft: n["isDraft"]?.bool ?? false,
+                                     updatedAt: n["updatedAt"]?.string.flatMap(iso.date(from:)), checks: checks,
+                                     review: n["reviewDecision"]?.string)
+        }
+        let data = json["data"]
+        return GitHubPullRequests(mine: (data?["viewer"]?["pullRequests"]?["nodes"]?.array ?? []).compactMap(pr),
+                                  toReview: (data?["search"]?["nodes"]?.array ?? []).compactMap(pr),
+                                  fetchedAt: now)
     }
 
     static func repos(_ viewer: JSONValue) -> [GitHubRepo] {

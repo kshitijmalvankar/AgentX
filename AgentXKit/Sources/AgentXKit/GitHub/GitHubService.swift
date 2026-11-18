@@ -43,6 +43,38 @@ enum GitHubService {
     }
     """
 
+    /// Your open pull requests (with their checks) and the ones waiting for your review.
+    static let pullRequestQuery = """
+    query {
+      viewer {
+        pullRequests(first: 15, states: OPEN, orderBy: {field: UPDATED_AT, direction: DESC}) {
+          nodes {
+            title url number isDraft updatedAt reviewDecision
+            repository { nameWithOwner }
+            commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+          }
+        }
+      }
+      search(query: "is:open is:pr review-requested:@me archived:false", type: ISSUE, first: 15) {
+        nodes {
+          ... on PullRequest {
+            title url number isDraft updatedAt
+            author { login }
+            repository { nameWithOwner }
+            commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+          }
+        }
+      }
+    }
+    """
+
+    static func fetchPullRequests(gh: String, path: String) async throws -> GitHubPullRequests {
+        let result = try await ProcessRunner.run(gh, ["api", "graphql", "-f", "query=\(pullRequestQuery)"], timeout: 30, path: path)
+        guard result.status == 0 else { throw classify(result.stderr) }
+        let json = try JSONDecoder().decode(JSONValue.self, from: Data(result.stdout.utf8))
+        return GitHubParser.pullRequests(json)
+    }
+
     /// Find `gh` on your login shell's PATH (Homebrew puts it in /opt/homebrew/bin).
     static func locateCLI(shellPath: String?) -> String? {
         let dirs = (shellPath ?? "").split(separator: ":").map(String.init) + ["/opt/homebrew/bin", "/usr/local/bin"]
