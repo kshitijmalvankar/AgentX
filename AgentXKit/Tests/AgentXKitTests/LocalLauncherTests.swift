@@ -229,6 +229,12 @@ struct MoreLocalTests {
         #expect(LocalCommands.looksLikeCommand("find the pdfs i downloaded this week"))
     }
 
+    @Test func theDayIsDescribedPlainly() {
+        let start = Calendar.current.date(bySettingHour: 13, minute: 0, second: 0, of: Date())!
+        let agenda = Agenda(start: start, end: start, events: [.init(id: "1", title: "Lunch with Enda", start: start, end: start.addingTimeInterval(3600),
+                                                                     isAllDay: false, calendar: "Home", color: nil, location: nil)])
+        #expect(TodayAgenda.describe(agenda).hasSuffix("Lunch with Enda"))
+    }
 }
 
 /// The real on-device model and Translation. Off unless AGENTX_LIVE_MODEL=1.

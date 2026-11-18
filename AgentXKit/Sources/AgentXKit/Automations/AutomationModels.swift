@@ -52,6 +52,9 @@ public struct Automation: Codable, Identifiable, Equatable, Sendable {
         case assistant
         /// A Claude Code session in a project folder.
         case coding
+        /// A briefing written on this Mac (Apple's on-device model) from your calendar,
+        /// reminders and unread mail. No Claude: it doesn't use your plan.
+        case onDevice
     }
 
     public var id = UUID()

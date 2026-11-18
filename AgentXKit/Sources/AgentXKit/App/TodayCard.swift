@@ -8,6 +8,9 @@ import SwiftUI
 @Observable
 public final class TodayAgenda {
     public private(set) var agenda: Agenda?
+    /// One line about the day, written on this Mac ("Busy morning, free after 2. Dentist at 4.").
+    public private(set) var summary: String?
+    @ObservationIgnored private var summarized = ""
     /// Reminders you ticked off on the card (this session), so you can undo.
     public private(set) var completed: [Agenda.Reminder] = []
     public var lastError: String?
@@ -27,6 +30,27 @@ public final class TodayAgenda {
         let today = Calendar.current.startOfDay(for: Date())
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
         agenda = try? await CalendarService.shared.agenda(from: today, to: tomorrow, prompt: false)
+        await summarize()
+    }
+
+    /// Sum the day up on this Mac (Apple's on-device model), when the agenda changed.
+    private func summarize() async {
+        guard let agenda, !agenda.isEmpty, LocalCommands.shared.isAvailable else { summary = nil; return }
+        let lines = Self.describe(agenda)
+        guard lines != summarized else { return }
+        summarized = lines
+        summary = await LocalBriefing.dayLine(from: lines)
+    }
+
+    /// The day as plain lines for the model: times and titles only.
+    nonisolated static func describe(_ agenda: Agenda) -> String {
+        let events = agenda.events.map { e in
+            e.isAllDay ? "All day: \(e.title)" : "\(e.start.formatted(.dateTime.hour().minute()))–\(e.end.formatted(.dateTime.hour().minute())): \(e.title)"
+        }
+        let reminders = agenda.reminders.map { r in
+            "To do\(r.due.map { $0 < Date() && r.isOverdue ? " (overdue)" : r.hasTime ? " at \($0.formatted(.dateTime.hour().minute()))" : "" } ?? ""): \(r.title)"
+        }
+        return (events + reminders).joined(separator: "\n")
     }
 
     /// Tick a reminder off from the card.
@@ -71,6 +95,9 @@ struct TodayCard: View {
         GlassCard("Today", symbol: "calendar") {
             Button("Calendar") { open("/System/Applications/Calendar.app") }.buttonStyle(.link)
         } content: {
+            if let summary = today.summary {
+                Text(summary).font(.callout).foregroundStyle(.secondary)
+            }
             if let agenda = today.agenda {
                 content(agenda)
             } else {

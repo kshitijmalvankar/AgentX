@@ -188,6 +188,7 @@ public final class AutomationCenter {
     }
 
     private func run(_ automation: Automation, trigger: AutomationRun.Trigger) async {
+        if automation.kind == .onDevice { await runOnDevice(automation, trigger: trigger); return }
         guard let sessions, active[automation.id] == nil else { return }
         if let usage = planUsage(), usage >= Self.usageCeiling {
             record(skipped: automation, reason: "Skipped: your Claude plan usage is at \(Format.percent(usage)).")
@@ -217,6 +218,22 @@ public final class AutomationCenter {
         updateRun(run.id) { $0.cwd = cwd }
         if c.liveHandle == nil, let error = c.error {
             finish(automation.id, status: .failed, summary: error, sessionId: nil)
+        }
+    }
+
+    /// A briefing written on this Mac: no Claude session, no plan usage.
+    private func runOnDevice(_ automation: Automation, trigger: AutomationRun.Trigger) async {
+        guard active[automation.id] == nil else { return }
+        let run = AutomationRun(automationID: automation.id, automationName: automation.name, trigger: trigger)
+        runs.insert(run, at: 0)
+        active[automation.id] = (run.id, Task {})
+        save()
+        onRunUpdate?(run)
+        do {
+            let briefing = try await LocalBriefing.make(focus: automation.prompt.trimmingCharacters(in: .whitespacesAndNewlines))
+            finish(automation.id, status: .succeeded, summary: briefing, sessionId: nil)
+        } catch {
+            finish(automation.id, status: .failed, summary: "Couldn't write the briefing on this Mac: \(error.localizedDescription)", sessionId: nil)
         }
     }
 

@@ -136,6 +136,7 @@ private struct AutomationCard: View {
                         Label(automation.schedule.label, systemImage: "clock")
                         Text("·")
                         Text(automation.kind == .assistant ? "Assistant"
+                             : automation.kind == .onDevice ? "On this Mac"
                              : "Coding in \(((automation.folder ?? "~") as NSString).lastPathComponent)")
                     }
                     .font(.callout)
@@ -291,6 +292,12 @@ private struct AutomationEditor: View {
                 Picker("Runs as", selection: $draft.kind) {
                     Text("Assistant (Calendar, Files, Mail, …)").tag(Automation.Kind.assistant)
                     Text("Coding session in a folder").tag(Automation.Kind.coding)
+                    Text("Briefing on this Mac (no Claude)").tag(Automation.Kind.onDevice)
+                }
+                if draft.kind == .onDevice {
+                    Text("Written on this Mac by Apple Intelligence from your calendar, reminders and unread mail, and shown as a notification. It doesn't use your Claude plan. Below, say what to focus on (or leave it empty).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if draft.kind == .coding {
                     Picker("Folder", selection: Binding(get: { draft.folder ?? "" }, set: { draft.folder = $0.isEmpty ? nil : $0 })) {
@@ -340,7 +347,7 @@ private struct AutomationEditor: View {
                     .primaryButton()
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty
-                              || draft.prompt.trimmingCharacters(in: .whitespaces).isEmpty
+                              || (draft.kind != .onDevice && draft.prompt.trimmingCharacters(in: .whitespaces).isEmpty)
                               || (draft.kind == .coding && draft.folder == nil))
             }
         }
@@ -353,7 +360,7 @@ private struct AutomationEditor: View {
         draft.schedule = everyHours ? .interval(hours: hours)
             : .daily(hour: parts.hour ?? 9, minute: parts.minute ?? 0, weekdays: weekdays)
         draft.allowedTools = allowedText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if draft.kind == .assistant { draft.folder = nil; draft.allowedTools = [] }
+        if draft.kind == .assistant || draft.kind == .onDevice { draft.folder = nil; draft.allowedTools = [] }
         if isNew { model.automations.add(draft) } else { model.automations.update(draft) }
         dismiss()
     }
