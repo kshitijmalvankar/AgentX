@@ -55,7 +55,9 @@
 		<string>_agentx._tcp</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>AgentX uses the microphone only when you use voice mode in Claude chats.</string>
+	<string>AgentX listens only while you hold the launcher shortcut to talk (or click its microphone), or use voice mode in Claude chats.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AgentX turns what you say into text on this Mac (on-device recognition), only while you hold the launcher shortcut or click its microphone.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>AgentX, powered by Claude.</string>
 	<!-- AgentX Dev only: where the agent-core sidecar lives (the repo checkout). Empty in installed builds. -->

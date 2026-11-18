@@ -182,6 +182,7 @@ public final class AppModel {
         AssistantWorkspace.prepare()
         memory.startWatching()
         FrontmostTracker.shared.start()
+        SelectionBubble.shared.start()
         await client.start()
         await client.waitUntilReady()
         guard client.status == .ready else { return }

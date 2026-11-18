@@ -40,6 +40,26 @@ enum SelectionCopier {
         return text?.isEmpty == false ? text : nil
     }
 
+    /// Paste `text` into `app` (⌘V sent to that app only), then put your
+    /// clipboard back. For Replace Selection, which you click.
+    static func paste(_ text: String, into app: NSRunningApplication, pasteboard: NSPasteboard = .general) async -> Bool {
+        guard !IsSecureEventInputEnabled(), CGPreflightPostEventAccess() else { return false }
+        let saved = Snapshot(pasteboard)
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        item.setData(Data(), forType: Snapshot.transient)
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        guard press(CGKeyCode(kVK_ANSI_V), in: app.processIdentifier) else {
+            saved.restore(to: pasteboard)
+            return false
+        }
+        // Give the app time to read the clipboard before it's put back.
+        try? await Task.sleep(for: .milliseconds(500))
+        saved.restore(to: pasteboard)
+        return true
+    }
+
     /// ⌘ plus a key, sent to one app. A private event source, so modifier keys
     /// you may still be holding (from the shortcut) don't mix in.
     private static func press(_ key: CGKeyCode, in pid: pid_t) -> Bool {

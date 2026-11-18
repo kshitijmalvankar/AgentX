@@ -123,7 +123,7 @@ Conversations **on this Mac** (in Chats) and the **⌥Space launcher** talk to C
 
 Each tool is defined once in Swift (`AgentXKit/Sources/AgentXKit/MacTools`), with its parameters and a risk tier. AgentX sends the list to agent-core, which exposes it to Claude as an in-process MCP server (`mcp__agentx__*`) and hands each call back to the app. That way, macOS permission prompts name AgentX. Reading and creating run straight away and show up as cards in the chat. Sending, deleting, moving, quitting, running Shortcuts and reading the clipboard always ask first. **Settings › Assistant** lists every tool and its tier. AppleScript tools pass your text as arguments, never as script code.
 
-In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. The shortcut can be changed in **Settings › General**.
+In the launcher, type a question, or `/code <project> <task>` to start a coding session in a recent project. It opens empty each time; earlier launcher conversations are in **Chats › On this Mac**. The shortcut can be changed in **Settings › General**.
 
 ### Memory
 
@@ -135,13 +135,22 @@ Tell the assistant "remember that I prefer short replies" (or it notices somethi
 
 ### What's on your screen
 
-When you press ⌥Space, AgentX looks at the app you were using: its window or document, your selected text (never a password field), the browser tab (Safari, Chrome, Edge, Brave, Arc, Vivaldi), or what's selected in Finder. Each shows as a chip under the launcher's field; remove any you don't want sent. In the conversation, your message notes what was shared ("Shared from Chrome: selected text …"). So "summarize this" or "reply to this" just works.
+When you press ⌥Space, AgentX looks at the app you were using: its window or document, your selected text (never a password field), the browser tab (Safari, Chrome, Edge, Brave, Arc, Vivaldi), or what's selected in Finder. Each shows as a chip under the launcher's field: click one to see exactly what it sends, or ✕ to leave it out. It goes with your message only when you ask about it ("summarize this", "what does this page say", "the selected text") or start from the **Ask** button; "what's my latest email?" goes on its own. In the conversation, your message notes what was shared ("Shared from Chrome: selected text …"). So "summarize this" or "reply to this" just works.
 
 - Chrome and other Chromium browsers don't share selected text through Accessibility, so for them AgentX presses ⌘C in that app and puts your clipboard back right after. It never does this in password fields, Finder or password managers, and you can turn it off in Settings.
 - **Look at Window** attaches a picture of that app's window to your next message, only when you click it. Claude can also ask to look (`screen_look`), and you approve each time.
 - In a conversation, Claude can check what you're working on with `context_now`. Neither tool is available to scheduled runs.
 - Screen context counts as untrusted content: a conversation that gets it asks before anything that could send data out.
 - **Settings → Assistant → What's on your screen** chooses: include it, show it but include only when you click, or don't look. It also shows the two macOS permissions this uses, Accessibility (window titles and selections) and Screen Recording (pictures), and **Permissions** covers each browser and Finder.
+
+### Launcher and pointer
+
+- **Talk instead of typing:** hold the launcher shortcut, speak, and let go to send (or click the microphone). Speech is recognized on your Mac; only the words go to Claude. What's on screen goes along only when you ask about it ("summarize this"). Turn on **Read answers aloud** in Settings to hear replies.
+- **Select text, then click Ask:** select text in any app and a small **Ask** button appears by the pointer. It opens the launcher right there with your selection and quick actions: Explain, Summarize, Fix the Writing, Make It Shorter, Reply.
+- **Use the answer:** under an answer, **Copy** it, **Replace Selection** (pastes it over the text you selected, in that app), or **Read Aloud**.
+- **Connected tools:** your claude.ai connectors (Google Calendar, Gmail, Drive…) work in Mac conversations too. Tools that only read run without asking; ones that send, create or delete ask first (Settings → Security).
+- **Claude points at things:** ask "where's the export button?" and AgentX moves a pointer onto it and rings it (`screen_point`). It finds things by their label through Accessibility, or by a spot in a picture of the window for web pages. It never clicks.
+- **Settings → Assistant → Launcher and pointer** sets where the launcher opens (the middle of the screen or next to the pointer) and turns each of these on or off.
 
 ### iPhone companion
 

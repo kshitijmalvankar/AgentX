@@ -44,7 +44,7 @@ struct ScreenContextSection: View {
         } header: {
             Text("What's on your screen")
         } footer: {
-            Text("AgentX looks only when you open the launcher (or when Claude asks, in a conversation you're in): the app in front, its window, your selection, the browser tab or Finder's selection. Each shows as a chip you can remove before sending. Pictures are taken only when you click Look at Window. A conversation that gets any of this asks before anything that could send data out. After allowing Screen Recording, quit and reopen AgentX.")
+            Text("AgentX looks only when you open the launcher (or when Claude asks, in a conversation you're in): the app in front, its window, your selection, the browser tab or Finder's selection. Each shows as a chip you can remove before sending, and it goes with your message only when you ask about it (\"summarize this\"). Pictures are taken only when you click Look at Window. A conversation that gets any of this asks before anything that could send data out. After allowing Screen Recording, quit and reopen AgentX.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
