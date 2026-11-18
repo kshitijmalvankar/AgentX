@@ -4,29 +4,49 @@ import SwiftUI
 struct GlassCard<Content: View, Accessory: View>: View {
     let title: String
     let symbol: String
+    /// The icon badge's colour (each kind of card has its own).
+    var tint: Color
     @ViewBuilder var accessory: Accessory
     @ViewBuilder var content: Content
 
-    init(_ title: String, symbol: String, @ViewBuilder accessory: () -> Accessory = { EmptyView() }, @ViewBuilder content: () -> Content) {
+    init(_ title: String, symbol: String, tint: Color = .accentColor,
+         @ViewBuilder accessory: () -> Accessory = { EmptyView() }, @ViewBuilder content: () -> Content) {
         self.title = title
         self.symbol = symbol
+        self.tint = tint
         self.accessory = accessory()
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(title, systemImage: symbol)
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                IconBadge(symbol: symbol, tint: tint)
+                Text(title).font(.headline)
                 Spacer()
                 accessory
             }
             content
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassEffect(.regular, in: .agentCard)
+    }
+}
+
+/// A symbol on a small tinted rounded square, like System Settings' icons.
+struct IconBadge: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 26
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.5, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(tint.gradient, in: .rect(cornerRadius: size * 0.28, style: .continuous))
+            .shadow(color: tint.opacity(0.35), radius: 3, y: 1)
     }
 }
 

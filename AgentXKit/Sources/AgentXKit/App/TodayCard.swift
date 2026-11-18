@@ -92,7 +92,7 @@ struct TodayCard: View {
     private static let shown = 5
 
     var body: some View {
-        GlassCard("Today", symbol: "calendar") {
+        GlassCard("Today", symbol: "calendar", tint: .red) {
             Button("Calendar") { open("/System/Applications/Calendar.app") }.buttonStyle(.link)
         } content: {
             if let summary = today.summary {

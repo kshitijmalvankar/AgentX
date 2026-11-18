@@ -336,7 +336,7 @@ struct GitHubActivityCard: View {
 
     var body: some View {
         let store = model.github
-        GlassCard("GitHub", symbol: "chevron.left.forwardslash.chevron.right") {
+        GlassCard("GitHub Activity", symbol: "chevron.left.forwardslash.chevron.right", tint: Color(red: 0.2, green: 0.22, blue: 0.27)) {
             HStack(spacing: 10) {
                 if let s = store.snapshot {
                     Text("@\(s.profile.login) · streak \(s.calendar.currentStreak)d")

@@ -372,7 +372,7 @@ struct AutomationsCard: View {
 
     var body: some View {
         let center = model.automations
-        GlassCard("Automations", symbol: "clock.arrow.2.circlepath") {
+        GlassCard("Automations", symbol: "clock.arrow.2.circlepath", tint: .teal) {
             Button("All") { model.sidebar = .automations }.buttonStyle(.link)
         } content: {
             let upcoming = center.upcoming.prefix(2)
