@@ -348,7 +348,8 @@ public final class SessionStore {
     @discardableResult
     public func startAssistant(prompt: String, taint: String? = nil, images: [JSONValue] = []) async -> Conversation {
         AssistantWorkspace.prepare()
-        let title = ScreenContext.displayText(prompt).replacingOccurrences(of: "\n\n(with what was on screen)", with: "")
+        let typed = ScreenContext.split(prompt).typed
+        let title = typed.isEmpty ? ScreenContext.displayText(prompt) : typed
         let c = Conversation(id: "new-\(UUID().uuidString)", kind: .assistant, sessionId: nil,
                              cwd: AssistantWorkspace.path, title: String(title.prefix(80)))
         c.taint = taint

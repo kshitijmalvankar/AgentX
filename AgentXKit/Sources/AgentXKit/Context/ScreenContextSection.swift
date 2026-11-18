@@ -3,6 +3,7 @@ import SwiftUI
 /// Settings → Assistant → What's on your screen.
 struct ScreenContextSection: View {
     @AppStorage("contextMode") private var mode = LauncherController.ContextMode.include.rawValue
+    @AppStorage(SelectionCopier.settingKey) private var copyFallback = true
     @State private var accessibility = AXReader.isTrusted
     @State private var screenRecording = ScreenGrabber.hasPermission
 
@@ -10,6 +11,13 @@ struct ScreenContextSection: View {
         Section {
             Picker("When you open the launcher", selection: $mode) {
                 ForEach(LauncherController.ContextMode.allCases) { Text($0.label).tag($0.rawValue) }
+            }
+            Toggle(isOn: $copyFallback) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Copy the selection when an app hides it")
+                    Text("Chrome and similar browsers don't share selected text, so AgentX presses ⌘C in that app and puts your clipboard back right after. Never in password fields, Finder or password managers.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             LabeledContent {
                 status(accessibility, fix: "Allow…") {

@@ -323,12 +323,33 @@ struct TranscriptRow: View, Equatable {
 
 /// Your message, right-aligned. Long ones (like a pasted report) fold to 8 lines.
 private struct UserBubble: View {
-    let text: String
+    private let text: String
+    /// What AgentX sent along ("Shared from Chrome: …"), drawn under the bubble.
+    private let notes: [String]
     @State private var expanded = false
+
+    init(text: String) {
+        (self.text, self.notes) = ScreenContext.notes(in: text)
+    }
 
     private var isLong: Bool { text.count > 600 || text.filter { $0 == "\n" }.count > 8 }
 
     var body: some View {
+        VStack(alignment: .trailing, spacing: 5) {
+            if !text.isEmpty { bubble }
+            ForEach(notes, id: \.self) { note in
+                Label(note, systemImage: note.hasPrefix("With a picture") ? "photo" : "paperclip")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 520, alignment: .trailing)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var bubble: some View {
         HStack {
             Spacer(minLength: 80)
             VStack(alignment: .leading, spacing: 6) {

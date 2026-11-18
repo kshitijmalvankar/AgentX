@@ -135,8 +135,9 @@ Tell the assistant "remember that I prefer short replies" (or it notices somethi
 
 ### What's on your screen
 
-When you press ⌥Space, AgentX looks at the app you were using: its window or document, your selected text (never a password field), the browser tab (Safari, Chrome, Edge, Brave, Arc, Vivaldi), or what's selected in Finder. Each shows as a chip under the launcher's field; remove any you don't want sent. So "summarize this" or "reply to this" just works.
+When you press ⌥Space, AgentX looks at the app you were using: its window or document, your selected text (never a password field), the browser tab (Safari, Chrome, Edge, Brave, Arc, Vivaldi), or what's selected in Finder. Each shows as a chip under the launcher's field; remove any you don't want sent. In the conversation, your message notes what was shared ("Shared from Chrome: selected text …"). So "summarize this" or "reply to this" just works.
 
+- Chrome and other Chromium browsers don't share selected text through Accessibility, so for them AgentX presses ⌘C in that app and puts your clipboard back right after. It never does this in password fields, Finder or password managers, and you can turn it off in Settings.
 - **Look at Window** attaches a picture of that app's window to your next message, only when you click it. Claude can also ask to look (`screen_look`), and you approve each time.
 - In a conversation, Claude can check what you're working on with `context_now`. Neither tool is available to scheduled runs.
 - Screen context counts as untrusted content: a conversation that gets it asks before anything that could send data out.
