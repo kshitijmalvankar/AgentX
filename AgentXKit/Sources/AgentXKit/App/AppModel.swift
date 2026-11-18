@@ -164,6 +164,10 @@ public final class AppModel {
                                  detail: "\(SecuritySettings.displayName(ofTool: tool)) may run without asking, even after untrusted content.")
             Task { await self.sendSecuritySettings() }
         }
+        sessions.onSessionStarted = { c in
+            if c.kind == .assistant, c.automationRunID == nil { LocalTitles.shared.make(for: c) }
+        }
+        sessions.titleOverride = { LocalTitles.shared[$0] }
         sessions.beforeStart = { [weak self] in await self?.securityReady?.value }
         automations.onRunUpdate = { [weak self] run in
             let action = run.status == .running ? "started" : run.status.rawValue

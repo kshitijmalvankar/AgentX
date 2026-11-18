@@ -196,6 +196,13 @@ struct MoreLocalTests {
         #expect(LocalWriter.defaultTarget(for: "Thanks for the update, see you tomorrow.", userLanguage: "hi") == "hi")
     }
 
+    @Test func titlesAreCleanedUp() {
+        #expect(LocalTitles.clean("\"Friday afternoon plans.\"") == "Friday afternoon plans")
+        #expect(LocalTitles.clean("Title: Lunch with Enda") == "Lunch with Enda")
+        #expect(LocalTitles.clean("") == nil)
+        #expect(LocalTitles.clean("line one\nline two") == nil)
+    }
+
     @Test func periodsForFiles() throws {
         let cal = Calendar.current
         let now = Date()
@@ -239,6 +246,8 @@ struct LiveLocalWritingTests {
         #expect(answer.localizedCaseInsensitiveContains("payment") || answer.localizedCaseInsensitiveContains("review"))
         let spanish = try await LocalWriter.translate("Good morning, see you at lunch.", to: "es")
         #expect(spanish.localizedCaseInsensitiveContains("buenos") || spanish.localizedCaseInsensitiveContains("almuerzo"))
+        let title = try #require(await LocalTitles.title(for: "Can you check whether I have anything on Friday afternoon?"))
+        #expect(title.split(separator: " ").count <= 7)
     }
 
     @Test func newCommands() async throws {

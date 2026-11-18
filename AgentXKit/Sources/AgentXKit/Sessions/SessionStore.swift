@@ -100,6 +100,10 @@ public final class SessionStore {
     @ObservationIgnored var onApprovalAnswered: ((ApprovalRequest, ApprovalAnswer) -> Void)?
     /// You chose Always Allow for a read-only connector tool after untrusted content.
     @ObservationIgnored var onTrustTool: ((String) -> Void)?
+    /// A conversation got its session id (AgentX titles new Mac conversations then).
+    @ObservationIgnored var onSessionStarted: ((Conversation) -> Void)?
+    /// A title made on this Mac for a session, if there is one.
+    @ObservationIgnored var titleOverride: (String) -> String? = { _ in nil }
     /// Set when sessions mustn't start (e.g. the Claude Code binary failed its signature check).
     public var startBlockedReason: String?
 
@@ -211,7 +215,12 @@ public final class SessionStore {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            sessions = try await client.call("sessions.list", ["limit": 500], as: [SessionSummary].self)
+            // Titles written on this Mac win over the first line of the conversation.
+            sessions = try await client.call("sessions.list", ["limit": 500], as: [SessionSummary].self).map { summary in
+                var s = summary
+                if s.customTitle == nil, let title = titleOverride(s.sessionId) { s.customTitle = title }
+                return s
+            }
             refreshError = nil
         } catch {
             refreshError = error.localizedDescription
@@ -571,6 +580,7 @@ public final class SessionStore {
             guard let c = conversation(forHandle: handle) else { return }
             c.sessionId = params["sessionId"]?.string ?? c.sessionId
             c.model = params["model"]?.string ?? c.model
+            onSessionStarted?(c)
 
         case "session.state":
             guard let c = conversation(forHandle: handle), let state = params["state"]?.string.flatMap(LiveState.init) else { return }
