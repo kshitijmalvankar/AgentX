@@ -175,9 +175,28 @@ public final class AgentClient {
     }
 
     private func send(_ message: JSONValue) {
-        guard let stdin, var data = try? JSONEncoder().encode(message) else { return }
-        data.append(0x0A)
+        guard let stdin, let data = Self.encodeLine(message) else { return }
         stdin.write(data)
+    }
+
+    /// One JSON line for agent-core. U+2028 and U+2029 (which emails can
+    /// contain, and JSON allows raw) are escaped so nothing reading lines can
+    /// mistake them for line ends.
+    nonisolated static func encodeLine(_ message: JSONValue) -> Data? {
+        guard let encoded = try? JSONEncoder().encode(message) else { return nil }
+        var out = Data(capacity: encoded.count + 1)
+        var i = encoded.startIndex
+        while i < encoded.endIndex {
+            if encoded[i] == 0xE2, i + 2 < encoded.endIndex, encoded[i + 1] == 0x80, encoded[i + 2] == 0xA8 || encoded[i + 2] == 0xA9 {
+                out.append(contentsOf: Array((encoded[i + 2] == 0xA8 ? "\\u2028" : "\\u2029").utf8))
+                i += 3
+            } else {
+                out.append(encoded[i])
+                i += 1
+            }
+        }
+        out.append(0x0A)
+        return out
     }
 
     // MARK: Incoming

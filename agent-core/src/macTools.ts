@@ -34,6 +34,9 @@ type ToolResult = {
   isError: boolean;
 };
 
+/** How long a Mac tool may take before Claude is told it failed (never hang a conversation). */
+export const TOOL_ANSWER_TIMEOUT_MS = 5 * 60 * 1000;
+
 let definitions: ToolDef[] = [];
 
 export function setToolDefinitions(defs: ToolDef[]): void {
@@ -65,8 +68,9 @@ export function zodShape(params: ParamDef[]): Record<string, z.ZodType> {
 /** Ask the app to run a tool and turn its answer into an MCP result. */
 export async function invokeInApp(name: string, args: Record<string, unknown>, sessionHandle?: string): Promise<ToolResult> {
   try {
+    // The longest Mac tool allows 2 minutes; macOS permission prompts can add a little more.
     const result = await request<{ text: string; isError?: boolean; image?: { data: string; mimeType: string } }>(
-      "tool.invoke", { handle: sessionHandle, name, args });
+      "tool.invoke", { handle: sessionHandle, name, args }, undefined, TOOL_ANSWER_TIMEOUT_MS);
     const source = definitions.find((d) => d.name === name)?.untrusted;
     const text = source && !result.isError ? frameUntrusted(source, result.text) : result.text;
     const content: ToolResult["content"] = [];
