@@ -351,3 +351,14 @@ struct FolderAccessTests {
         #expect(FolderAccess.folder(for: anywhere) == nil, "no folder named: no prompt")
     }
 }
+
+@Suite("Pointing from the launcher")
+@MainActor
+struct PointFromLauncherTests {
+    @Test func whereIsQuestionsStayOnThisMac() {
+        let rows = LauncherController.shared.buildResults("where is the new chat button", files: [])
+        #expect(rows.count == 1 && rows.first?.verb == "Show")
+        guard case .local(let plan)? = rows.first?.action else { Issue.record("not done on this Mac"); return }
+        #expect(plan.action == .pointAt && plan.target == "new chat")
+    }
+}

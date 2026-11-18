@@ -32,16 +32,25 @@ enum ScreenTargets {
     /// plus some labels that are there (so Claude can try again with one).
     static func find(_ query: String, pid: pid_t) -> (best: Match?, seen: [String]) {
         let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 0.5)
+        // Short waits: a busy app shouldn't hold the search up (each element asks several things).
+        AXUIElementSetMessagingTimeout(app, 0.2)
+        // Electron and Chromium apps (Slack, VS Code, the Claude app…) build their tree only when asked.
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         var roots: [AXUIElement] = []
-        if let window: AXUIElement = value(app, kAXFocusedWindowAttribute) { roots.append(window) }
-        if let menuBar: AXUIElement = value(app, kAXMenuBarAttribute) { roots.append(menuBar) }
+        func add(_ element: AXUIElement?) {
+            guard let element, !roots.contains(where: { CFEqual($0, element) }) else { return }
+            roots.append(element)
+        }
+        // AgentX itself: its main window, not the launcher (which has the keyboard).
+        if pid != ProcessInfo.processInfo.processIdentifier { add(value(app, kAXFocusedWindowAttribute)) }
+        add(value(app, kAXMainWindowAttribute))
+        add(value(app, kAXMenuBarAttribute))
 
         var best: (match: Match, score: Int)?
         var seen: [String] = []
         var queue = roots.map { ($0, 0) }
         var visited = 0
-        let deadline = Date().addingTimeInterval(1.5)
+        let deadline = Date().addingTimeInterval(1.0)
         while !queue.isEmpty, visited < 4_000, Date() < deadline {
             let (element, depth) = queue.removeFirst()
             visited += 1
@@ -52,6 +61,7 @@ enum ScreenTargets {
                 if s > 0 {
                     let total = s * 10 + (actionable.contains(role) ? 5 : 0)
                     if total > (best?.score ?? 0) { best = (Match(label: label, role: role, frame: frame), total) }
+                    if total >= 35 { break }   // exact and clickable: that's it
                 }
             }
             // Menus that aren't open have no place on screen: don't descend into them.

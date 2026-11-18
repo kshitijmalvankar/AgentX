@@ -101,16 +101,17 @@ extension LauncherController {
         let hasSelection = includeContext && !dropped.contains(.selection) && context?.selectedText != nil
 
         // Exact things first: each is the answer on its own.
-        if let quick = LocalCommands.quick(text), quick.toolCall != nil {
+        if let quick = LocalCommands.quick(text), quick.toolCall != nil || quick.action == .pointAt {
             let icon = switch quick.action {
             case .setVolume: "speaker.wave.2"
             case .showCalendar: "calendar"
             case .showReminders: "checklist"
+            case .pointAt: "hand.point.up.left"
             default: "circle.lefthalf.filled"
             }
             let subtitle = quick.action == .showCalendar ? (quick.when?.date ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.abbreviated)) : nil
             return [LauncherResult(id: "quick", kind: .command, title: quick.headline, subtitle: subtitle, icon: .symbol(icon),
-                                   verb: quick.action == .showCalendar || quick.action == .showReminders ? "Show" : "Do",
+                                   verb: [.showCalendar, .showReminders, .pointAt].contains(quick.action) ? "Show" : "Do",
                                    action: .local(quick), score: 1000)]
         }
         if let value = Calculator.evaluate(text) {
@@ -278,7 +279,7 @@ extension LauncherController {
         case .tool(let name, let args, let done):
             Task { await run(name: name, args: args, done: done, closeAfter: true) }
         case .local(let plan):
-            if plan.action == .showCalendar || plan.action == .showReminders {
+            if [.showCalendar, .showReminders, .pointAt].contains(plan.action) {
                 Task { await execute(plan) }
             } else if let call = plan.toolCall {
                 Task { await run(name: call.name, args: call.args, done: plan.headline, closeAfter: true) }
@@ -484,7 +485,8 @@ extension LauncherController {
 
     /// Point at something in the app in front: by its label (Accessibility), or its words on screen (Vision).
     func pointAt(_ target: String) async {
-        guard let app = contextApp, !target.isEmpty else { return }
+        // The app you were looking at; AgentX's own window when the launcher opened over it.
+        guard let app = contextApp ?? openedOver, !target.isEmpty else { return }
         local = .thinking("Looking for “\(target)”…")
         let pid = app.processIdentifier
         var spot = await Task.detached(priority: .userInitiated) { ScreenTargets.find(target, pid: pid).best?.frame }.value

@@ -32,6 +32,8 @@ final class LauncherController {
     var selectedResult = 0
     /// A command being worked out or done on this Mac, shown as a card instead of the results.
     var local: LocalState?
+    /// The app in front when the launcher opened, AgentX included ("where's the New Chat button?").
+    @ObservationIgnored var openedOver: NSRunningApplication?
     @ObservationIgnored let fileSearch = FileSearch()
     @ObservationIgnored var fileURLs: [URL] = []
     @ObservationIgnored var fileQuery = ""
@@ -149,6 +151,7 @@ final class LauncherController {
             error = nil
             local = nil
             query = ""
+            openedOver = NSWorkspace.shared.frontmostApplication
             AppIndex.shared.refreshIfNeeded()
             LocalCommands.shared.prewarm()
         }
