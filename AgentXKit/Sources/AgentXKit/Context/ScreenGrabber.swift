@@ -25,7 +25,19 @@ enum ScreenGrabber {
         var jpeg: Data
         var windowTitle: String?
         var appName: String
+        /// Where the window was (global, origin top-left of the main screen) and the picture's size in pixels.
+        var windowFrame: CGRect = .zero
+        var imageSize: CGSize = .zero
     }
+
+    /// The last picture's geometry, so screen_point can turn a spot in it into a place on screen.
+    struct LastLook: Sendable {
+        var windowFrame: CGRect
+        var imageSize: CGSize
+        var appName: String
+    }
+
+    @MainActor static var lastLook: LastLook?
 
     static func captureFrontWindow(of app: NSRunningApplication) async throws -> Picture {
         guard hasPermission else {
@@ -56,6 +68,9 @@ enum ScreenGrabber {
         guard let jpeg = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
             throw ToolError("Couldn't encode the picture.")
         }
-        return Picture(jpeg: jpeg, windowTitle: window.title, appName: app.localizedName ?? "the app")
+        let picture = Picture(jpeg: jpeg, windowTitle: window.title, appName: app.localizedName ?? "the app",
+                              windowFrame: window.frame, imageSize: CGSize(width: image.width, height: image.height))
+        await MainActor.run { lastLook = LastLook(windowFrame: picture.windowFrame, imageSize: picture.imageSize, appName: picture.appName) }
+        return picture
     }
 }

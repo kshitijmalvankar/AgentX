@@ -59,6 +59,7 @@ enum ToolPresentation {
         "memory_forget": "Forgot",
         "context_now": "Looked at what you're working on",
         "screen_look": "Looked at your screen",
+        "screen_point": "Pointed at",
     ]
 
     /// A tool call as a short sentence: what Claude did, and to what.
