@@ -157,6 +157,13 @@ public final class AppModel {
                                  detail: ToolPresentation.summary(name: request.toolName, input: request.input, cwd: request.cwd),
                                  origin: origin, sessionId: request.sessionId)
         }
+        sessions.onTrustTool = { [weak self] tool in
+            guard let self else { return }
+            SecuritySettings.trust(tool)
+            self.activity.record(.policy, "trusted", tool: tool,
+                                 detail: "\(SecuritySettings.displayName(ofTool: tool)) may run without asking, even after untrusted content.")
+            Task { await self.sendSecuritySettings() }
+        }
         sessions.beforeStart = { [weak self] in await self?.securityReady?.value }
         automations.onRunUpdate = { [weak self] run in
             let action = run.status == .running ? "started" : run.status.rawValue
@@ -231,6 +238,8 @@ public final class AppModel {
             "pathExceptions": .array(PathGuard.exceptions.map(JSONValue.string)),
             "trustedRoots": .array(roots.map(JSONValue.string)),
             "claudePath": .optional(claude),
+            "trustedTools": .array(SecuritySettings.trustedTools.map(JSONValue.string)),
+            "trustConnectorReads": .bool(SecuritySettings.trustConnectorReads),
         ])
     }
 

@@ -34,7 +34,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { AsyncQueue } from "./asyncQueue.ts";
 import { askTierTools, autoAllowedTools, macToolsServer, toolDefinitions, untrustedToolSources } from "./macTools.ts";
-import { POLICY_INSTRUCTIONS, SessionPolicy, untrustedReminder } from "./policy.ts";
+import { isReadOnlyConnectorTool, POLICY_INSTRUCTIONS, SessionPolicy, untrustedReminder } from "./policy.ts";
 import { handle, log, notify, request } from "./rpc.ts";
 
 /** Load the same settings Claude Code uses: ~/.claude, project .claude/, and local overrides. */
@@ -78,8 +78,13 @@ type SecurityConfig = {
   trustedRoots: string[];
   /** The Claude Code binary AgentX verified (Anthropic's signature); used instead of the SDK's lookup. */
   claudePath?: string;
+  /** Read-only connector tools allowed to run after untrusted content. Applies to running sessions too. */
+  trustedTools: string[];
+  /** All connector tools that only read run without asking. Applies to running sessions too. */
+  trustConnectorReads: boolean;
 };
-const security: SecurityConfig = { pathExceptions: [], trustedRoots: [] };
+const security: SecurityConfig = { pathExceptions: [], trustedRoots: [], trustedTools: [], trustConnectorReads: false };
+let trustedToolSet: ReadonlySet<string> = new Set();
 
 type StartParams = {
   /** "assistant" adds the Mac tools (mcp__agentx__*) and reads across your home folder. */
@@ -136,6 +141,8 @@ class LiveSession {
           initialTaint: params.taint,
           untrustedTools: untrustedToolSources(),
           askTierTools: askTierTools(),
+          trustedTools: () => trustedToolSet,
+          trustConnectorReads: () => security.trustConnectorReads,
         })
       : undefined;
     const append = [params.appendSystemPrompt, this.policy ? POLICY_INSTRUCTIONS : undefined].filter(Boolean).join("\n\n") || undefined;
@@ -175,6 +182,10 @@ class LiveSession {
           const i = input as PreToolUseHookInput;
           const d = policy.beforeTool(i.tool_name, i.tool_input);
           if (d.decision === "allow-default") return {};
+          // Trusted connector tool: allow outright, so Claude Code doesn't ask either.
+          if (d.decision === "allow") {
+            return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: d.reason } };
+          }
           this.activity({ kind: "policy", action: d.decision === "deny" ? "blocked" : "asked", tool: i.tool_name, detail: d.reason });
           if (d.decision === "ask") this.askReasons.set(i.tool_use_id, d.reason);
           return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: d.decision, permissionDecisionReason: d.reason } };
@@ -321,6 +332,9 @@ class LiveSession {
   private canUseTool: CanUseTool = async (toolName, input, opts) => {
     const policyReason = this.askReasons.get(opts.toolUseID);
     this.askReasons.delete(opts.toolUseID);
+    if (!policyReason && this.policy?.isTrusted(toolName)) {
+      return { behavior: "allow", decisionClassification: "user_permanent" };
+    }
     let recentRiskyActions = 0;
     if (this.policy) {
       const over = this.policy.noteRiskyAction();
@@ -354,6 +368,8 @@ class LiveSession {
           defaultToNo: opts.defaultToNo ?? false,
           canAlwaysAllow: (opts.suggestions?.length ?? 0) > 0 && !opts.suppressAlwaysAllowRule && !policyReason
             && (this.policy?.mayAlwaysAllow(toolName) ?? true),
+          // A read-only connector tool the policy asked about: the app can trust it from now on.
+          canTrustTool: policyReason !== undefined && (this.policy?.mayTrust(toolName) ?? false),
           policyReason,
           taint: this.policy?.taint,
           recentRiskyActions,
@@ -432,6 +448,11 @@ export function registerSessionHandlers(): void {
     if (Array.isArray(p.pathExceptions)) security.pathExceptions = p.pathExceptions.filter((x) => typeof x === "string");
     if (Array.isArray(p.trustedRoots)) security.trustedRoots = p.trustedRoots.filter((x) => typeof x === "string");
     if (typeof p.claudePath === "string" || p.claudePath === null) security.claudePath = p.claudePath ?? undefined;
+    if (Array.isArray(p.trustedTools)) {
+      security.trustedTools = p.trustedTools.filter((x) => typeof x === "string" && isReadOnlyConnectorTool(x));
+      trustedToolSet = new Set(security.trustedTools);
+    }
+    if (typeof p.trustConnectorReads === "boolean") security.trustConnectorReads = p.trustConnectorReads;
     return { ...security };
   });
 

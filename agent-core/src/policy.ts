@@ -42,6 +42,19 @@ export function isForeignMcpTool(toolName: string): boolean {
 }
 
 /**
+ * A connector tool whose name says it only reads (list_events, get_thread,
+ * search_files…). Only these may be "always allowed" after untrusted
+ * content: a tool that creates, sends or shares could carry data out.
+ */
+export function isReadOnlyConnectorTool(toolName: string): boolean {
+  if (!isForeignMcpTool(toolName)) return false;
+  const name = toolName.slice(toolName.lastIndexOf("__") + 2);
+  // The verb must be a whole word: list_events or listEvents, not listen_and_forward.
+  const action = name.charAt(0).toLowerCase() + name.slice(1);
+  return /^(list|get|search|read|find|query|fetch|lookup|view|describe|count|check)([_-]|[A-Z]|$)/.test(action);
+}
+
+/**
  * Folders full of secrets. Content searches (Grep) may not run over a folder
  * that contains one of these: searching your whole home folder for
  * "PRIVATE KEY" would otherwise read your keys line by line.
@@ -109,10 +122,16 @@ export type PolicyOptions = {
   untrustedTools?: Record<string, string>;
   /** mcp__agentx__ tools in the "ask" tier. */
   askTierTools?: Set<string>;
+  /** Read-only connector tools you let run after untrusted content (Settings → Security). Read on every call, so changes apply at once. */
+  trustedTools?: () => ReadonlySet<string>;
+  /** Every connector tool that only reads runs without asking (Settings → Security, on by default). */
+  trustConnectorReads?: () => boolean;
 };
 
 export type PreDecision =
   | { decision: "allow-default" }
+  /** You chose Always Allow for this read-only connector tool: no ask from AgentX or from Claude Code. */
+  | { decision: "allow"; reason: string }
   | { decision: "ask"; reason: string }
   | { decision: "deny"; reason: string };
 
@@ -223,6 +242,9 @@ export class SessionPolicy {
         }
       }
     }
+    if (this.isTrusted(toolName)) {
+      return { decision: "allow", reason: "You always allow this connected tool (Settings → Security)." };
+    }
     if (this.taint && (EGRESS_TOOLS.has(toolName) || isForeignMcpTool(toolName))) {
       return { decision: "ask", reason: `This conversation read untrusted content (${this.taint}), so AgentX asks before anything that could send data out.` };
     }
@@ -251,6 +273,17 @@ export class SessionPolicy {
       if (outside) return `a file outside your projects (${displayPath(outside, home)})`;
     }
     return undefined;
+  }
+
+  /** A read-only connector tool that runs without asking: all of them (the default), or the ones you chose. */
+  isTrusted(toolName: string): boolean {
+    if (!isReadOnlyConnectorTool(toolName)) return false;
+    return (this.opts.trustConnectorReads?.() ?? false) || (this.opts.trustedTools?.().has(toolName) ?? false);
+  }
+
+  /** Whether the app may offer to trust this tool after untrusted content ("Always Allow" on a policy ask). */
+  mayTrust(toolName: string): boolean {
+    return this.taint !== undefined && isReadOnlyConnectorTool(toolName);
   }
 
   /** Whether "Always allow" may be offered for this tool now. */

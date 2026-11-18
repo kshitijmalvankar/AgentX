@@ -7,6 +7,8 @@ import SwiftUI
 struct SecuritySettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var exceptions: [String] = PathGuard.exceptions
+    @State private var trustedTools: [String] = SecuritySettings.trustedTools
+    @AppStorage(SecuritySettings.trustConnectorReadsKey) private var trustConnectorReads = true
     @State private var showRules = false
     private let ownTeam = CodeSignature.ownTeam()
 
@@ -47,8 +49,41 @@ struct SecuritySettingsView: View {
                 }
             }
 
-            Section("Untrusted content") {
-                Text("Web pages, email, notes, calendar invites, files outside your projects and anything a schedule or trigger brings in can contain instructions written to steer Claude. Once a conversation has read any of it, AgentX asks before anything that could send your data out (fetching a URL, opening a link, the clipboard), and \"Always allow\" isn't offered for sending or deleting. Scheduled runs start this way.")
+            Section {
+                Text("Web pages, email, notes, calendar invites, what's on your screen, files outside your projects and anything a schedule or trigger brings in can contain instructions written to steer Claude. Once a conversation has read any of it, AgentX asks before anything that could send your data out (fetching a URL, opening a link, the clipboard, connected tools), and \"Always Allow\" isn't offered for sending or deleting. Scheduled runs start this way.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(isOn: $trustConnectorReads) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Connected tools that only read run without asking")
+                        Text("Your claude.ai connectors and MCP servers: list, get and search tools (like Google Calendar's list events). Tools that send, create or delete still ask.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: trustConnectorReads) { _, on in
+                    Task { await model.sendSecuritySettings() }
+                    model.activity.record(.policy, "connector reads", detail: on ? "Connected tools that only read run without asking." : "Connected tools ask before running.")
+                }
+                if trustedTools.isEmpty {
+                    if !trustConnectorReads {
+                        Text("No connected tools are always allowed.").font(.callout).foregroundStyle(.secondary)
+                    }
+                } else {
+                    ForEach(trustedTools, id: \.self) { tool in
+                        HStack {
+                            Image(systemName: "checkmark.shield").foregroundStyle(.green)
+                            Text(SecuritySettings.displayName(ofTool: tool)).font(.callout)
+                            Spacer()
+                            Button("Remove", systemImage: "minus.circle") { setTrustedTools(trustedTools.filter { $0 != tool }) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                        }
+                    }
+                }
+            } header: {
+                Text("Untrusted content")
+            } footer: {
+                Text("Connected tools listed here only read (list, get, search). You added them with Always Allow; they run without asking even after untrusted content, and even with the switch off. Tools that create, send or share always ask.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -106,6 +141,14 @@ struct SecuritySettingsView: View {
         UserDefaults.standard.set(list, forKey: PathGuard.exceptionsKey)
         Task { await model.sendSecuritySettings() }
         model.activity.record(.policy, "exceptions changed", detail: list.isEmpty ? "No path exceptions." : "Exceptions: " + list.joined(separator: ", "))
+    }
+
+    private func setTrustedTools(_ list: [String]) {
+        trustedTools = list
+        SecuritySettings.trustedTools = list
+        Task { await model.sendSecuritySettings() }
+        model.activity.record(.policy, "trusted tools changed",
+                              detail: list.isEmpty ? "No connected tools always allowed." : "Always allowed: " + list.map(SecuritySettings.displayName(ofTool:)).joined(separator: ", "))
     }
 
     private func addException() {

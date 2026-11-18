@@ -162,7 +162,9 @@ struct ApprovalCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(approval.headline).fontWeight(.semibold)
                     if let detail = approval.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
-                    if let reason = approval.decisionReason { Text(reason).font(.caption).foregroundStyle(.secondary) }
+                    if let reason = approval.decisionReason, reason != approval.policyReason {
+                        Text(reason).font(.caption).foregroundStyle(.secondary)
+                    }
                     if let path = approval.blockedPath { Text(path.abbreviatingHome).font(.caption.monospaced()).foregroundStyle(.secondary) }
                 }
                 Spacer()
@@ -207,10 +209,12 @@ struct ApprovalCard: View {
                 .secondaryButton()
                 .keyboardShortcut(approval.defaultToNo ? .defaultAction : .cancelAction)
                 Spacer()
-                if approval.canAlwaysAllow {
-                    Button("Always allow") { answer(.allowAlways) }
+                if approval.canAlwaysAllow || approval.canTrustTool {
+                    Button("Always Allow") { answer(.allowAlways) }
                         .secondaryButton()
-                        .help("Don't ask again for this kind of action in this project")
+                        .help(approval.canTrustTool
+                              ? "Let \(SecuritySettings.displayName(ofTool: approval.toolName)) run without asking, even after untrusted content. It only reads. Undo in Settings → Security."
+                              : "Don't ask again for this kind of action in this project")
                 }
                 Button("Allow") { answer(.allow) }
                     .primaryButton()

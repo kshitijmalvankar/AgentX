@@ -26,9 +26,11 @@ public struct ApprovalRequest: Identifiable, Sendable {
     /// Risky actions this conversation asked for in the last 10 minutes (including this one).
     public var recentRiskyActions = 0
     public var unattended = false
+    /// A read-only connector tool the policy asked about: "Always Allow" trusts it from now on.
+    public var canTrustTool = false
     public let receivedAt = Date()
 
-    public var headline: String { title ?? "Claude wants to use \(toolName)" }
+    public var headline: String { title ?? "Claude wants to use \(SecuritySettings.displayName(ofTool: toolName))" }
 }
 
 public enum ApprovalAnswer: Sendable {
@@ -96,6 +98,8 @@ public final class SessionStore {
     @ObservationIgnored var unattendedApprovalTimeout: Duration = .seconds(600)
     /// An approval was answered (by you, a notification or a timeout): for the activity log.
     @ObservationIgnored var onApprovalAnswered: ((ApprovalRequest, ApprovalAnswer) -> Void)?
+    /// You chose Always Allow for a read-only connector tool after untrusted content.
+    @ObservationIgnored var onTrustTool: ((String) -> Void)?
     /// Set when sessions mustn't start (e.g. the Claude Code binary failed its signature check).
     public var startBlockedReason: String?
 
@@ -485,6 +489,12 @@ public final class SessionStore {
 
     public func answer(_ approval: ApprovalRequest, _ answer: ApprovalAnswer) {
         guard approvals.contains(where: { $0.id == approval.id }) else { return }
+        var answer = answer
+        // "Always Allow" on a policy ask: trust the tool in AgentX (agent-core's rule), then allow this one.
+        if case .allowAlways = answer, approval.canTrustTool, !approval.canAlwaysAllow {
+            onTrustTool?(approval.toolName)
+            answer = .allow
+        }
         approvals.removeAll { $0.id == approval.id }
         approvalWaiters.removeValue(forKey: approval.id)?.resume(returning: answer.json)
         onApprovalAnswered?(approval, answer)
@@ -527,6 +537,7 @@ public final class SessionStore {
             request.taint = params["taint"]?.string
             request.recentRiskyActions = params["recentRiskyActions"]?.int ?? 0
             request.unattended = params["unattended"]?.bool ?? false
+            request.canTrustTool = params["canTrustTool"]?.bool ?? false
             if let owner, owner.automationRunID != nil {
                 request.automationName = owner.title
                 // Nobody may be watching: deny it if it isn't answered in time.

@@ -7,6 +7,7 @@ import {
   absolutePath,
   displayPath,
   frameUntrusted,
+  isReadOnlyConnectorTool,
   pathArguments,
   sensitivePathReason,
 } from "../src/policy.ts";
@@ -188,4 +189,37 @@ test("a conversation can start already tainted (carried-over text, resumed conve
   assert.equal(p.taint, "text carried over from claude.ai");
   assert.equal(p.beforeTool("WebFetch", { url: "https://example.com" }).decision, "ask");
   assert.equal(policy({ initialTaint: "   " }).tainted, false);
+});
+
+test("read-only connector tools can be trusted after untrusted content; others can't", () => {
+  assert.equal(isReadOnlyConnectorTool("mcp__claude_ai_Google_Calendar__list_events"), true);
+  assert.equal(isReadOnlyConnectorTool("mcp__claude_ai_Gmail__search_threads"), true);
+  assert.equal(isReadOnlyConnectorTool("mcp__github__getIssue"), true);
+  assert.equal(isReadOnlyConnectorTool("mcp__claude_ai_Google_Calendar__create_event"), false, "can invite people");
+  assert.equal(isReadOnlyConnectorTool("mcp__claude_ai_Gmail__send_message"), false);
+  assert.equal(isReadOnlyConnectorTool("mcp__claude_ai_Gmail__listen_and_forward"), false, "list must be the whole word");
+  assert.equal(isReadOnlyConnectorTool("mcp__agentx__calendar_events"), false, "AgentX's own tools have their own tiers");
+
+  let trusted = new Set<string>();
+  const p = policy({ initialTaint: "a web page", trustedTools: () => trusted });
+  const list = "mcp__claude_ai_Google_Calendar__list_events";
+  assert.equal(p.beforeTool(list, {}).decision, "ask");
+  assert.equal(p.mayTrust(list), true);
+  assert.equal(p.mayTrust("mcp__claude_ai_Google_Calendar__create_event"), false);
+
+  trusted = new Set([list, "mcp__claude_ai_Google_Calendar__create_event"]);
+  assert.equal(p.beforeTool(list, {}).decision, "allow", "trusted: runs without asking (AgentX or Claude Code), at once");
+  assert.equal(policy({ trustedTools: () => trusted }).beforeTool(list, {}).decision, "allow", "before any untrusted content too");
+  assert.equal(p.beforeTool("mcp__claude_ai_Google_Calendar__create_event", {}).decision, "ask", "a write is never trusted");
+  assert.equal(p.beforeTool("WebFetch", { url: "https://x.example" }).decision, "ask");
+});
+
+test("with connector reads trusted, every read-only connector tool runs; writes still ask", () => {
+  let reads = true;
+  const p = policy({ initialTaint: "a web page", trustConnectorReads: () => reads });
+  assert.equal(p.beforeTool("mcp__claude_ai_Gmail__search_threads", {}).decision, "allow");
+  assert.equal(p.beforeTool("mcp__claude_ai_Google_Drive__get_file", {}).decision, "allow");
+  assert.equal(p.beforeTool("mcp__claude_ai_Gmail__send_message", {}).decision, "ask");
+  reads = false;
+  assert.equal(p.beforeTool("mcp__claude_ai_Gmail__search_threads", {}).decision, "ask", "turned off: asks again at once");
 });
