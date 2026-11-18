@@ -54,6 +54,8 @@
 	<array>
 		<string>_agentx._tcp</string>
 	</array>
+	<key>NSContactsUsageDescription</key>
+	<string>AgentX looks up a contact's email address or phone number when you ask it to email or message someone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>AgentX listens only while you hold the launcher shortcut to talk (or click its microphone), or use voice mode in Claude chats.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

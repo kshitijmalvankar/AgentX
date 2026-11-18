@@ -22,8 +22,20 @@ final class LauncherController {
     var error: String?
     /// Bumped on every show so the text field takes focus.
     private(set) var focusToken = 0
-    /// Text to put in the field on the next show (from an agentx://launcher?q= link). Never sent automatically.
-    var pendingText: String?
+    /// What's typed in the field.
+    var query = ""
+
+    // MARK: On this Mac (no Claude)
+
+    /// Apps, files, settings, commands and calculations for what's typed (LauncherLocal.swift).
+    var results: [LauncherResult] = []
+    var selectedResult = 0
+    /// A command being worked out or done on this Mac, shown as a card instead of the results.
+    var local: LocalState?
+    @ObservationIgnored let fileSearch = FileSearch()
+    @ObservationIgnored var fileURLs: [URL] = []
+    @ObservationIgnored var fileQuery = ""
+    @ObservationIgnored var fileTask: Task<Void, Never>?
 
     // MARK: Screen context
 
@@ -128,7 +140,6 @@ final class LauncherController {
     }
 
     func show(prefill: String? = nil, anchor: Anchor = .automatic, fromSelection: Bool = false) {
-        if let prefill { pendingText = prefill }
         let opening = panel?.isVisible != true
         // Each time it opens, start clean. Earlier conversations (even one still
         // answering) carry on in Chats → On this Mac.
@@ -136,7 +147,13 @@ final class LauncherController {
             conversationID = nil
             replaceTarget = nil
             error = nil
+            local = nil
+            query = ""
+            AppIndex.shared.refreshIfNeeded()
+            LocalCommands.shared.prewarm()
         }
+        // Prefill from an agentx://launcher?q= link: put in the field, never sent automatically.
+        if let prefill { query = prefill }
         self.fromSelection = fromSelection
         var anchor = anchor
         if case .automatic = anchor {
@@ -180,7 +197,13 @@ final class LauncherController {
 
     func hide() {
         if listening { VoiceInput.shared.cancel(); listening = false }
+        fileSearch.cancel()
         panel?.orderOut(nil)
+    }
+
+    /// Esc: back out of a command card first, then close.
+    func escape() {
+        if local != nil { local = nil; updateResults() } else { hide() }
     }
 
     func newConversation() {
@@ -211,23 +234,28 @@ final class LauncherController {
         let heard = await VoiceInput.shared.stop()
         listening = false
         guard !heard.isEmpty else { return }
-        submit(heard, spoken: true)
+        routeSpoken(heard)
     }
 
     // MARK: Sending
 
     /// Quick actions for a selection (from the bubble, or any time there's one).
-    static let selectionActions: [(title: String, icon: String, prompt: String)] = [
-        ("Explain", "lightbulb", "Explain this simply."),
-        ("Summarize", "text.alignleft", "Summarize this in a few short bullet points."),
-        ("Fix the Writing", "wand.and.stars", "Fix the spelling, grammar and flow of this, keeping my voice. Reply with only the corrected text."),
-        ("Make It Shorter", "arrow.down.right.and.arrow.up.left", "Make this shorter and clearer. Reply with only the new text."),
-        ("Reply", "arrowshape.turn.up.left", "Draft a reply to this. Reply with only the draft."),
+    /// Done on this Mac (Apple's on-device model, or Apple's Translation); `prompt` is what Claude gets if you ask it instead.
+    static let selectionActions: [SelectionAction] = [
+        SelectionAction(title: "Summarize", icon: "text.alignleft", job: .summarize, prompt: "Summarize this in a few short bullet points."),
+        SelectionAction(title: "Explain", icon: "lightbulb", job: .explain, prompt: "Explain this simply."),
+        SelectionAction(title: "Fix the Writing", icon: "wand.and.stars", job: .fix,
+                        prompt: "Fix the spelling, grammar and flow of this, keeping my voice. Reply with only the corrected text."),
+        SelectionAction(title: "Make It Shorter", icon: "arrow.down.right.and.arrow.up.left", job: .shorten,
+                        prompt: "Make this shorter and clearer. Reply with only the new text."),
+        SelectionAction(title: "Reply", icon: "arrowshape.turn.up.left", job: .reply, prompt: "Draft a reply to this. Reply with only the draft."),
+        SelectionAction(title: "Translate", icon: "character.bubble", job: nil, prompt: "Translate this."),
     ]
 
     func submit(_ text: String, spoken: Bool = false) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if !(text == "/code" || text.hasPrefix("/code ")) { LocalUsage.noteClaude() }
         error = nil
         SpeechOutput.shared.stop()
         if text == "/code" || text.hasPrefix("/code ") {
@@ -251,6 +279,9 @@ final class LauncherController {
         }
         clearContext()
         fromSelection = false
+        query = ""
+        local = nil
+        results = []
         Task {
             let c: Conversation
             if let conversation {
@@ -405,7 +436,7 @@ final class LauncherPanel: NSPanel {
     static let inset: CGFloat = 20
 
     init<Content: View>(rootView: Content) {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 720, height: 600),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 720, height: 700),
                    styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                    backing: .buffered, defer: false)
         level = .floating
@@ -417,11 +448,11 @@ final class LauncherPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false
         isMovableByWindowBackground = true
-        contentView = NSHostingView(rootView: rootView.frame(width: 720, height: 600, alignment: .topLeading))
+        contentView = NSHostingView(rootView: rootView.frame(width: 720, height: 700, alignment: .topLeading))
     }
 
     override var canBecomeKey: Bool { true }
-    override func cancelOperation(_ sender: Any?) { LauncherController.shared.hide() }
+    override func cancelOperation(_ sender: Any?) { LauncherController.shared.escape() }
     override func resignKey() {
         super.resignKey()
         LauncherController.shared.hide()
@@ -433,98 +464,70 @@ struct LauncherView: View {
     @State private var launcher = LauncherController.shared
     @State private var voice = VoiceInput.shared
     @State private var speech = SpeechOutput.shared
-    @State private var text = ""
     @FocusState private var focused: Bool
 
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.panel, style: .continuous) }
-
-    private func takePendingText() {
-        guard let pending = launcher.pendingText else { return }
-        text = pending
-        launcher.pendingText = nil
-    }
+    /// Spotlight's glass, tinted with the window colour so text stays readable over busy pages.
+    private static let glass = Glass.regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.45))
 
     /// The selection that will go with the next message, if any (for quick actions).
     private var selection: String? {
         launcher.includeContext && !launcher.dropped.contains(.selection) ? launcher.context?.selectedText : nil
     }
 
+    /// Like Spotlight: a floating search bar, and a panel under it only when there's something to show.
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-
-            if launcher.contextApp != nil {
-                ContextChips(launcher: launcher, goesWithMessage: launcher.wantsScreen(for: text))
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 14)
-            }
-
-            if let error = launcher.error {
-                Divider().opacity(0.6)
-                Label(error, systemImage: "exclamationmark.circle")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .padding(16)
-            } else if let c = launcher.conversation {
-                conversation(c)
-            } else {
-                Divider().opacity(0.6)
-                VStack(alignment: .leading, spacing: 12) {
-                    if selection != nil {
-                        SelectionActions { prompt in launcher.submit(prompt) }
-                    } else {
-                        FlowSuggestions { suggestion in launcher.submit(suggestion) }
-                    }
-                    if VoiceInput.holdToTalk, !launcher.compact {
-                        Label("Hold the shortcut to talk instead of typing", systemImage: "mic")
-                            .font(.caption).foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(16)
+        VStack(alignment: .leading, spacing: 10) {
+            searchBar
+            if hasPanel {
+                panel.transition(.opacity.combined(with: .offset(y: -8)))
             }
         }
         .frame(width: launcher.cardWidth)
-        // A solid frosted backing keeps text readable over busy pages; the glass gives the edge.
-        .background(.regularMaterial, in: shape)
-        .overlay(shape.strokeBorder(.white.opacity(0.22), lineWidth: 1))
-        .containerShape(shape)
-        .glassEffect(.regular, in: shape)
-        .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
         .padding(LauncherPanel.inset)
+        .animation(.snappy(duration: 0.2), value: hasPanel)
         .animation(.snappy(duration: 0.22), value: launcher.conversationID)
         .animation(.snappy(duration: 0.22), value: launcher.listening)
-        .onChange(of: launcher.focusToken) {
-            focused = true
-            takePendingText()
-        }
-        .onAppear {
-            focused = true
-            takePendingText()
-        }
+        .onChange(of: launcher.focusToken) { focused = true }
+        .onAppear { focused = true }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            AgentMark(listening: launcher.listening, level: voice.level)
+    private var hasPanel: Bool {
+        showChips || launcher.error != nil || launcher.conversation != nil || launcher.local != nil
+            || !launcher.results.isEmpty || (selection != nil && launcher.query.isEmpty)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 14) {
             if launcher.listening {
-                VStack(alignment: .leading, spacing: 2) {
+                AgentMark(listening: true, level: voice.level)
+                VStack(alignment: .leading, spacing: 1) {
                     Text(voice.text.isEmpty ? "Listening…" : voice.text)
-                        .font(.system(size: 19))
+                        .font(.system(size: 22))
                         .foregroundStyle(voice.text.isEmpty ? .secondary : .primary)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .contentTransition(.opacity)
-                    Text("Release the shortcut (or click ■) to send")
-                        .font(.caption).foregroundStyle(.tertiary)
+                    Text("Let go of the shortcut to send").font(.caption).foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                TextField(selection != nil ? "Ask about what you selected…" : "Ask anything, or /code <project> <task>", text: $text)
+                TextField(placeholder, text: $launcher.query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 19))
+                    .font(.system(size: 24))
                     .focused($focused)
-                    .onSubmit {
-                        launcher.submit(text)
-                        text = ""
+                    .onSubmit { launcher.returnPressed() }
+                    .onKeyPress(.downArrow) { launcher.moveSelection(1) ? .handled : .ignored }
+                    .onKeyPress(.upArrow) { launcher.moveSelection(-1) ? .handled : .ignored }
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard press.modifiers.contains(.command) else { return .ignored }
+                        launcher.askClaude()
+                        return .handled
                     }
+                    // ⌘1–⌘9: the row with that number.
+                    .onKeyPress(characters: .decimalDigits, phases: .down) { press in
+                        guard press.modifiers == .command, let n = Int(press.characters) else { return .ignored }
+                        return launcher.performNumbered(n) ? .handled : .ignored
+                    }
+                    .onChange(of: launcher.query) { launcher.updateResults() }
             }
             if let c = launcher.conversation, c.isWorking {
                 ProgressView().controlSize(.small)
@@ -533,25 +536,79 @@ struct LauncherView: View {
             if speech.isSpeaking {
                 iconButton("Stop Reading", "speaker.slash") { speech.stop() }
             }
-            iconButton(launcher.listening ? "Send" : "Talk", launcher.listening ? "stop.circle.fill" : "mic") {
+            if showChips, launcher.picture == nil {
+                iconButton(launcher.takingPicture ? "Looking…" : "Look at \(launcher.contextApp?.localizedName ?? "the") Window", "eye") {
+                    launcher.takePicture()
+                }
+                .disabled(launcher.takingPicture)
+            }
+            iconButton(launcher.listening ? "Send" : "Talk", launcher.listening ? "stop.circle.fill" : "mic", highlight: launcher.listening) {
                 launcher.toggleListening()
             }
-            .foregroundStyle(launcher.listening ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.leading, 24)
+        .padding(.trailing, 20)
+        .frame(height: 62)
+        .glassEffect(Self.glass, in: .capsule)
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
     }
 
-    private func iconButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+    private var panel: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        return VStack(alignment: .leading, spacing: 0) {
+            if showChips {
+                ContextChips(launcher: launcher, goesWithMessage: launcher.wantsScreen(for: launcher.query))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
+            }
+            if let error = launcher.error {
+                Label(error, systemImage: "exclamationmark.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .padding(18)
+            } else if let c = launcher.conversation {
+                conversation(c)
+            } else if let local = launcher.local {
+                LocalCommandCard(state: local)
+                    .padding(18)
+            } else if !launcher.results.isEmpty {
+                LauncherResultsList()
+                    .padding(8)
+            } else if selection != nil, launcher.query.isEmpty {
+                SelectionActions { action in launcher.runOnSelection(action) }
+                    .padding(16)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .containerShape(shape)
+        .glassEffect(Self.glass, in: shape)
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 6)
+    }
+
+    /// What's on screen shows only when it's in play: your words are about it,
+    /// text is selected, or you took a picture. Otherwise the launcher stays clean.
+    private var showChips: Bool {
+        guard launcher.contextApp != nil else { return false }
+        return launcher.wantsScreen(for: launcher.query) || selection != nil
+            || launcher.picture != nil || launcher.takingPicture || launcher.pictureError != nil
+    }
+
+    private var placeholder: String {
+        if selection != nil { return "Ask about what you selected…" }
+        if launcher.conversation != nil { return "Ask a follow-up…" }
+        return "Search or ask"
+    }
+
+    private func iconButton(_ title: String, _ icon: String, highlight: Bool = false, action: @escaping () -> Void) -> some View {
         Button(title, systemImage: icon, action: action)
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .font(.system(size: 15))
+            .font(.system(size: 18))
+            .foregroundStyle(highlight ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             .help(title)
     }
 
     @ViewBuilder private func conversation(_ c: Conversation) -> some View {
-        Divider().opacity(0.6)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -618,13 +675,22 @@ private struct AgentMark: View {
 }
 
 /// One-click things to do with a selection.
+/// One of the Ask button's actions.
+struct SelectionAction: Sendable {
+    let title: String
+    let icon: String
+    /// What the on-device writer does; nil for Translate.
+    let job: LocalWriter.Job?
+    let prompt: String
+}
+
 private struct SelectionActions: View {
-    let ask: (String) -> Void
+    let run: (SelectionAction) -> Void
 
     var body: some View {
         FlowLayout(spacing: 8, lineSpacing: 8) {
             ForEach(LauncherController.selectionActions, id: \.title) { action in
-                Button(action.title, systemImage: action.icon) { ask(action.prompt) }
+                Button(action.title, systemImage: action.icon) { run(action) }
                     .secondaryButton()
                     .lineLimit(1)
             }
@@ -702,12 +768,6 @@ private struct ContextChips: View {
                 }
                 if let picture = launcher.picture {
                     pictureChip(picture)
-                } else {
-                    Button(launcher.takingPicture ? "Looking…" : "Look at Window", systemImage: "eye") { launcher.takePicture() }
-                        .secondaryButton()
-                        .controlSize(.small)
-                        .disabled(launcher.takingPicture)
-                        .help("Attach a picture of \(launcher.contextApp?.localizedName ?? "the app")'s window to your next message. Only when you click; the picture goes to Claude and isn't saved.")
                 }
                 if !launcher.includeContext, launcher.sharedContextIfIncluded != nil {
                     Button("Include this", systemImage: "plus.circle") { launcher.includeContext = true }

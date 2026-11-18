@@ -40,6 +40,18 @@ enum ScreenGrabber {
     @MainActor static var lastLook: LastLook?
 
     static func captureFrontWindow(of app: NSRunningApplication) async throws -> Picture {
+        let shot = try await captureImage(of: app, maxDimension: maxDimension)
+        guard let jpeg = NSBitmapImageRep(cgImage: shot.image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+            throw ToolError("Couldn't encode the picture.")
+        }
+        let picture = Picture(jpeg: jpeg, windowTitle: shot.title, appName: app.localizedName ?? "the app",
+                              windowFrame: shot.frame, imageSize: CGSize(width: shot.image.width, height: shot.image.height))
+        await MainActor.run { lastLook = LastLook(windowFrame: picture.windowFrame, imageSize: picture.imageSize, appName: picture.appName) }
+        return picture
+    }
+
+    /// The app's front window as an image (full resolution up to `maxDimension`), with where it is on screen.
+    static func captureImage(of app: NSRunningApplication, maxDimension: CGFloat) async throws -> (image: CGImage, frame: CGRect, title: String?) {
         guard hasPermission else {
             requestPermission()
             throw ToolError("AgentX needs Screen Recording permission to see a window. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen AgentX.")
@@ -65,12 +77,6 @@ enum ScreenGrabber {
         config.height = Int(height)
         config.showsCursor = false
         let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config)
-        guard let jpeg = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
-            throw ToolError("Couldn't encode the picture.")
-        }
-        let picture = Picture(jpeg: jpeg, windowTitle: window.title, appName: app.localizedName ?? "the app",
-                              windowFrame: window.frame, imageSize: CGSize(width: image.width, height: image.height))
-        await MainActor.run { lastLook = LastLook(windowFrame: picture.windowFrame, imageSize: picture.imageSize, appName: picture.appName) }
-        return picture
+        return (image, window.frame, window.title)
     }
 }

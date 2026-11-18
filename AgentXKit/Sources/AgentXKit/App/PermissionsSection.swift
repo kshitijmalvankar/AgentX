@@ -10,6 +10,8 @@ struct PermissionsSection: View {
     @State private var calendar = CalendarService.access(to: .event)
     @State private var reminders = CalendarService.access(to: .reminder)
     @State private var confirmReset = false
+    /// Files & Folders, once checked (checking shows macOS's prompt the first time, so only on a click).
+    @State private var folders: [FolderAccess.Folder: Bool] = [:]
     @State private var message: String?
 
     var body: some View {
@@ -17,6 +19,7 @@ struct PermissionsSection: View {
             calendarRow("Calendar", status: calendar, pane: "Privacy_Calendars")
             calendarRow("Reminders", status: reminders, pane: "Privacy_Reminders")
             ForEach(AutomationTarget.allCases.filter(\.isInstalled)) { target in automationRow(target) }
+            ForEach(FolderAccess.Folder.allCases) { folder in folderRow(folder) }
             if let message {
                 Text(message).font(.caption).foregroundStyle(.secondary)
             }
@@ -88,6 +91,31 @@ struct PermissionsSection: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(target.name)
                 Text(target.purpose).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func folderRow(_ folder: FolderAccess.Folder) -> some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                switch folders[folder] {
+                case true?:
+                    badge(.allowed)
+                case false?:
+                    badge(.denied)
+                    Button("Open Settings") { FolderAccess.openSettings() }.controlSize(.small)
+                case nil:
+                    badge(.unknown)
+                    Button("Check…") { Task { folders[folder] = await FolderAccess.ensure(folder.url) } }
+                        .controlSize(.small)
+                        .help("macOS asks once whether AgentX may see this folder.")
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(folder.rawValue) folder")
+                Text(folder == .desktop ? "Finding files and screenshots there from the launcher" : "Finding files there from the launcher")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }

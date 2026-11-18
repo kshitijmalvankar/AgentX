@@ -55,6 +55,11 @@ enum ContextTools {
             }
             let pid = app.processIdentifier
             let found = await Task.detached(priority: .userInitiated) { ScreenTargets.find(target, pid: pid) }.value
+            // Not in Accessibility (web pages, pictures): find the words on screen with Vision, on this Mac.
+            if found.best == nil, ScreenGrabber.hasPermission, let spot = try? await ScreenText.locate(target, in: app) {
+                await MainActor.run { PointerOverlay.shared.point(at: spot, label: note ?? target) }
+                return "Pointed at “\(target)” (found by reading the window) in \(app.localizedName ?? "the app")."
+            }
             guard let match = found.best else {
                 let seen = found.seen.isEmpty ? "" : " Labels there include: " + found.seen.prefix(30).map { "“\($0)”" }.joined(separator: ", ") + "."
                 throw ToolError("Couldn't find “\(target)” in \(app.localizedName ?? "that app").\(seen) For web pages and pictures, use screen_look and pass x and y.")
