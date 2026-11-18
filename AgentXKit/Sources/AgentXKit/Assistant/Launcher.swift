@@ -569,14 +569,14 @@ struct LauncherView: View {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.callout).foregroundStyle(.secondary)
                     .padding(18)
-            } else if let c = launcher.conversation {
-                conversation(c)
             } else if let local = launcher.local {
                 LocalCommandCard(state: local)
                     .padding(18)
-            } else if !launcher.results.isEmpty {
+            } else if launcher.showsResults {
                 LauncherResultsList()
                     .padding(8)
+            } else if let c = launcher.conversation {
+                conversation(c)
             } else if selection != nil, launcher.query.isEmpty {
                 SelectionActions { action in launcher.runOnSelection(action) }
                     .padding(16)
@@ -598,7 +598,7 @@ struct LauncherView: View {
 
     private var placeholder: String {
         if selection != nil { return "Ask about what you selected…" }
-        if launcher.conversation != nil { return "Ask a follow-up…" }
+        if launcher.conversation != nil { return "Search, do something, or ask a follow-up" }
         return "Search or ask"
     }
 

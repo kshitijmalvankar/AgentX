@@ -8,7 +8,7 @@ import FoundationModels
 struct LocalPlan: Sendable, Equatable {
     enum Action: String, CaseIterable, Sendable {
         case createEvent, createReminder, createNote, setVolume, setAppearance, openApp, quitApp, runShortcut
-        case showCalendar, showReminders, findFiles, draftEmail, sendMessage, pointAt, none
+        case showCalendar, showReminders, findFiles, draftEmail, sendMessage, pointAt, newWindow, newTab, none
     }
 
     struct ToolCall: Sendable, Equatable {
@@ -94,7 +94,7 @@ struct LocalPlan: Sendable, Equatable {
         case .showReminders:
             return ToolCall(name: "reminders_list", args: [:])
         // Need a contact looked up, a search run, or the screen read first (LauncherLocal does these).
-        case .findFiles, .draftEmail, .sendMessage, .pointAt, .none:
+        case .findFiles, .draftEmail, .sendMessage, .pointAt, .newWindow, .newTab, .none:
             return nil
         }
     }
@@ -116,6 +116,8 @@ struct LocalPlan: Sendable, Equatable {
         case .draftEmail: "Email \(recipient ?? "")"
         case .sendMessage: "Message \(recipient ?? "")"
         case .pointAt: "Show where “\(target ?? "")” is"
+        case .newWindow: app.map { "New \($0.capitalized) window" } ?? "New window"
+        case .newTab: app.map { "New \($0.capitalized) tab" } ?? "New tab"
         case .none: "Not a command"
         }
     }
@@ -301,6 +303,8 @@ final class LocalCommands {
         case .draftEmail: return has(#"\b(e-?mail|mail|write to)\b"#)
         case .sendMessage: return has(#"\b(text|message|imessage|tell|send)\b"#)
         case .pointAt: return has(#"\b(where|point|show me|find the)\b"#)
+        case .newWindow: return has(#"\bwindow\b"#)
+        case .newTab: return has(#"\btab\b"#)
         }
     }
 
@@ -324,6 +328,17 @@ final class LocalCommands {
         }
         if t.range(of: #"^(show|list|check)( me)? my (reminders|to-?dos?|tasks)\b|^(what are|whats|what's) my (reminders|to-?dos?|tasks)\b"#, options: .regularExpression) != nil {
             return LocalPlan(action: .showReminders)
+        }
+        // "open safari new window", "new tab in chrome", "new finder window", "new tab".
+        if let m = t.wholeMatch(of: /(?:open )?(?:a )?new (?:(.+?) )?(window|tab)(?: (?:in|on|for) (.+))?/) {
+            var p = LocalPlan(action: m.2 == "tab" ? .newTab : .newWindow)
+            p.app = (m.3 ?? m.1).map(String.init)
+            return p
+        }
+        if let m = t.wholeMatch(of: /(?:open |launch )?(.+?) (?:a )?new (window|tab)/) {
+            var p = LocalPlan(action: m.2 == "tab" ? .newTab : .newWindow)
+            p.app = String(m.1)
+            return p
         }
         // "where's the share button", "point to Export", "show me where Settings is".
         let ui = "button|menu|link|tab|field|icon|option|setting|checkbox|toggle|switch"

@@ -362,3 +362,26 @@ struct PointFromLauncherTests {
         #expect(plan.action == .pointAt && plan.target == "new chat")
     }
 }
+
+@Suite("New windows and tabs")
+struct NewWindowTests {
+    @Test func understoodWithoutTheModel() {
+        #expect(LocalCommands.quick("open safari new window").map { [$0.action == .newWindow, $0.app == "safari"] } == [true, true])
+        #expect(LocalCommands.quick("new tab in chrome").map { [$0.action == .newTab, $0.app == "chrome"] } == [true, true])
+        #expect(LocalCommands.quick("new finder window")?.app == "finder")
+        #expect(LocalCommands.quick("new tab")?.app == nil, "the app you're in")
+        #expect(LocalCommands.quick("new note about rent") == nil, "not a window or tab")
+    }
+}
+
+@Suite("After an answer")
+@MainActor
+struct AfterAnAnswerTests {
+    @Test func appsAndCommandsStillGoToThisMac() async throws {
+        AppIndex.shared.refreshIfNeeded()
+        for _ in 0..<40 where AppIndex.shared.apps.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        let rows = LauncherController.shared.buildResults("open safari new window", files: [])
+        #expect(rows.first?.title == "New Safari window", "\(rows.map(\.title))")
+        guard case .local? = rows.first?.action else { Issue.record("not on this Mac"); return }
+    }
+}

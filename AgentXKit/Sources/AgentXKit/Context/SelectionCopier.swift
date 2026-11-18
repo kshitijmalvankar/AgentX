@@ -62,7 +62,7 @@ enum SelectionCopier {
 
     /// ⌘ plus a key, sent to one app. A private event source, so modifier keys
     /// you may still be holding (from the shortcut) don't mix in.
-    private static func press(_ key: CGKeyCode, in pid: pid_t) -> Bool {
+    static func press(_ key: CGKeyCode, in pid: pid_t) -> Bool {
         guard let source = CGEventSource(stateID: .privateState),
               let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return false }

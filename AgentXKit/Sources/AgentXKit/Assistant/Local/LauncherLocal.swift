@@ -46,7 +46,9 @@ extension LauncherController {
     func updateResults() {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if case .thinking = local {} else if local != nil { local = nil }
-        guard !text.isEmpty, conversation == nil else {
+        // After an answer, what you type is a new request like any other: apps, commands and
+        // files are handled here; only a question goes on to Claude, as a follow-up.
+        guard !text.isEmpty else {
             results = []
             fileSearch.cancel()
             return
@@ -101,12 +103,14 @@ extension LauncherController {
         let hasSelection = includeContext && !dropped.contains(.selection) && context?.selectedText != nil
 
         // Exact things first: each is the answer on its own.
-        if let quick = LocalCommands.quick(text), quick.toolCall != nil || quick.action == .pointAt {
+        if let quick = LocalCommands.quick(text), quick.toolCall != nil || [.pointAt, .newWindow, .newTab].contains(quick.action) {
             let icon = switch quick.action {
             case .setVolume: "speaker.wave.2"
             case .showCalendar: "calendar"
             case .showReminders: "checklist"
             case .pointAt: "hand.point.up.left"
+            case .newWindow: "macwindow.badge.plus"
+            case .newTab: "plus.square.on.square"
             default: "circle.lefthalf.filled"
             }
             let subtitle = quick.action == .showCalendar ? (quick.when?.date ?? Date()).formatted(.dateTime.weekday(.wide).day().month(.abbreviated)) : nil
@@ -135,7 +139,15 @@ extension LauncherController {
             let quitting = lower.hasPrefix("quit ") || lower.hasPrefix("close ")
             let opening = lower.hasPrefix("open ") || lower.hasPrefix("launch ") || lower.hasPrefix("start ")
             let appQuery = quitting || opening ? String(text.drop(while: { $0 != " " }).dropFirst()) : text
-            for (app, s) in AppIndex.shared.matches(appQuery, limit: 4) {
+            var appMatches = AppIndex.shared.matches(appQuery, limit: 4)
+            if appMatches.isEmpty, opening || quitting {
+                // "open safari new window": the app is the first word or two.
+                let words = appQuery.split(separator: " ")
+                for n in stride(from: min(3, words.count - 1), through: 1, by: -1) where appMatches.isEmpty {
+                    appMatches = AppIndex.shared.matches(words.prefix(n).joined(separator: " "), limit: 1)
+                }
+            }
+            for (app, s) in appMatches {
                 if quitting {
                     guard NSRunningApplication.runningApplications(withBundleIdentifier: Bundle(url: app.url)?.bundleIdentifier ?? "").first != nil else { continue }
                     matches.append(LauncherResult(id: "quit:" + app.url.path, kind: .app, title: "Quit \(app.name)", subtitle: nil,
@@ -200,16 +212,26 @@ extension LauncherController {
                               icon: .image(NSWorkspace.shared.icon(forFile: url.path)), verb: "Open", action: .open(url), score: 0)
     }
 
+    /// Whether the rows are what's on screen. Over an answer, only when they're about doing
+    /// something here (an app, a command, a file); a question shows the conversation, and
+    /// Return sends it as a follow-up.
+    var showsResults: Bool {
+        guard let first = results.first else { return false }
+        guard conversation != nil else { return true }
+        if case .askClaude = first.action { return false }
+        return !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     /// ↑/↓ in the field. False when there's no list to move in.
     func moveSelection(_ delta: Int) -> Bool {
-        guard local == nil, !results.isEmpty else { return false }
+        guard local == nil, showsResults else { return false }
         selectedResult = min(max(0, selectedResult + delta), results.count - 1)
         return true
     }
 
     /// ⌘1–⌘9: do the row with that number (false when there isn't one).
     func performNumbered(_ n: Int) -> Bool {
-        guard local == nil, conversation == nil, n >= 1, results.indices.contains(n - 1) else { return false }
+        guard local == nil, n >= 1, results.indices.contains(n - 1), showsResults else { return false }
         selectedResult = n - 1
         perform(results[n - 1])
         return true
@@ -238,9 +260,9 @@ extension LauncherController {
         case nil:
             break
         }
-        if conversation == nil, results.indices.contains(selectedResult) {
+        if results.indices.contains(selectedResult) {
             perform(results[selectedResult])
-        } else if conversation == nil, let find = fileSearch(for: query) {
+        } else if let find = fileSearch(for: query) {
             openNewestFile(find)
         } else {
             submit(query)
@@ -279,7 +301,7 @@ extension LauncherController {
         case .tool(let name, let args, let done):
             Task { await run(name: name, args: args, done: done, closeAfter: true) }
         case .local(let plan):
-            if [.showCalendar, .showReminders, .pointAt].contains(plan.action) {
+            if [.showCalendar, .showReminders, .pointAt, .newWindow, .newTab].contains(plan.action) {
                 Task { await execute(plan) }
             } else if let call = plan.toolCall {
                 Task { await run(name: call.name, args: call.args, done: plan.headline, closeAfter: true) }
@@ -336,6 +358,7 @@ extension LauncherController {
         switch plan.action {
         case .findFiles: await findFiles(plan); return
         case .pointAt: await pointAt(plan.target ?? ""); return
+        case .newWindow, .newTab: await openNew(plan); return
         case .draftEmail:
             let args: JSONValue = ["to": .array(plan.address.map { [.string($0)] } ?? []), "subject": .string(plan.subject ?? ""),
                                    "body": .string(plan.message ?? "")]
@@ -499,6 +522,35 @@ extension LauncherController {
         local = nil
         hide()
         PointerOverlay.shared.point(at: spot, label: target)
+    }
+
+    /// A new window or tab in an app: open it (or bring it forward), then ⌘N or ⌘T there.
+    /// No app named: the one you were in.
+    func openNew(_ plan: LocalPlan) async {
+        let key = CGKeyCode(plan.action == .newTab ? 0x11 : 0x2D)   // T, N
+        var target: NSRunningApplication?
+        var justLaunched = false
+        if let name = plan.app, let app = AppIndex.shared.matches(name, limit: 1).first?.0 {
+            let bundleID = Bundle(url: app.url)?.bundleIdentifier ?? ""
+            justLaunched = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            target = try? await NSWorkspace.shared.openApplication(at: app.url, configuration: config)
+        } else if let front = openedOver, front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            target = front
+            front.activate()
+        }
+        guard let target else {
+            local = .failed("Couldn't find “\(plan.app ?? "that app")”.", text: query)
+            return
+        }
+        hide()
+        LocalUsage.noteOnMac()
+        // An app that was just opened shows a window of its own.
+        guard !justLaunched || plan.action == .newTab else { return }
+        for _ in 0..<30 where !target.isActive { try? await Task.sleep(for: .milliseconds(50)) }
+        try? await Task.sleep(for: .milliseconds(150))
+        _ = SelectionCopier.press(key, in: target.processIdentifier)
     }
 
     /// Paste text over your selection in the app it came from.
