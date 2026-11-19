@@ -118,26 +118,9 @@ enum GitHubService {
 
     /// Git repos in your project folders that point at github.com, keyed by "owner/repo".
     static func localClones(candidates: [String]) async -> [String: LocalClone] {
-        let fm = FileManager.default
-        var folders = Set(candidates)
-        let home = fm.homeDirectoryForCurrentUser.path
-        for root in ["Projects", "Developer", "Code", "GitHub", "src", "repos"] {
-            let dir = "\(home)/\(root)"
-            if let names = try? fm.contentsOfDirectory(atPath: dir) {
-                for name in names where !name.hasPrefix(".") { folders.insert("\(dir)/\(name)") }
-            }
-        }
-        let repos = folders.filter { fm.fileExists(atPath: "\($0)/.git") }.sorted().prefix(120)
-
-        return await withTaskGroup(of: (String, LocalClone)?.self) { group in
-            for folder in repos {
-                group.addTask {
-                    guard let remote = try? await ProcessRunner.run("/usr/bin/git", ["-C", folder, "remote", "get-url", "origin"], timeout: 5),
-                          remote.status == 0, let key = GitHubParser.repoKey(fromRemote: remote.stdout) else { return nil }
-                    let status = try? await ProcessRunner.run("/usr/bin/git", ["-C", folder, "status", "--porcelain=v2", "--branch"], timeout: 10)
-                    let parsed = GitHubParser.status(status?.stdout ?? "")
-                    return (key, LocalClone(path: folder, branch: parsed.branch, changes: parsed.changes, ahead: parsed.ahead, behind: parsed.behind))
-                }
+        await withTaskGroup(of: (String, LocalClone)?.self) { group in
+            for folder in repoFolders(candidates: candidates) {
+                group.addTask { await localClone(at: folder) }
             }
             var result: [String: LocalClone] = [:]
             for await item in group {
@@ -148,5 +131,41 @@ enum GitHubService {
             }
             return result
         }
+    }
+
+    /// Folders that are git repos: the projects you've used, plus everything in the usual code folders.
+    static func repoFolders(candidates: [String]) -> [String] {
+        let fm = FileManager.default
+        var folders = Set(candidates)
+        let home = fm.homeDirectoryForCurrentUser.path
+        for root in ["Projects", "Developer", "Code", "GitHub", "src", "repos"] {
+            let dir = "\(home)/\(root)"
+            if let names = try? fm.contentsOfDirectory(atPath: dir) {
+                for name in names where !name.hasPrefix(".") { folders.insert("\(dir)/\(name)") }
+            }
+        }
+        return Array(folders.filter { fm.fileExists(atPath: "\($0)/.git") }.sorted().prefix(120))
+    }
+
+    /// One repo's state, keyed by "owner/repo" (nil when it isn't on github.com).
+    static func localClone(at folder: String) async -> (String, LocalClone)? {
+        guard let remote = try? await ProcessRunner.run("/usr/bin/git", ["-C", folder, "remote", "get-url", "origin"], timeout: 5),
+              remote.status == 0, let key = GitHubParser.repoKey(fromRemote: remote.stdout) else { return nil }
+        // No optional locks: reading the status mustn't rewrite .git/index (which the watcher would see).
+        let status = try? await ProcessRunner.run("/usr/bin/git", ["-C", folder, "--no-optional-locks", "status", "--porcelain=v2", "--branch"], timeout: 10)
+        let parsed = GitHubParser.status(status?.stdout ?? "")
+        return (key, LocalClone(path: folder, branch: parsed.branch, changes: parsed.changes, ahead: parsed.ahead, behind: parsed.behind))
+    }
+
+    /// A repo's git folder: `.git`, or where a worktree's `.git` file points.
+    static func gitDirectory(of folder: String) -> String? {
+        let dotGit = "\(folder)/.git"
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: dotGit, isDirectory: &isDirectory) else { return nil }
+        if isDirectory.boolValue { return dotGit }
+        guard let text = try? String(contentsOfFile: dotGit, encoding: .utf8),
+              let line = text.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") }) else { return nil }
+        let target = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+        return target.hasPrefix("/") ? target : URL(fileURLWithPath: target, relativeTo: URL(fileURLWithPath: folder + "/")).standardizedFileURL.path
     }
 }

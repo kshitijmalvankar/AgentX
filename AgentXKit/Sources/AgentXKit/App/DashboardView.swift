@@ -44,6 +44,10 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear { model.github.refreshIfStale() }
+        // Coming back from your editor or Terminal: pick up edits to files (commits show up by themselves).
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.github.refreshIfStale()
+        }
         .navigationTitle("Dashboard")
     }
 

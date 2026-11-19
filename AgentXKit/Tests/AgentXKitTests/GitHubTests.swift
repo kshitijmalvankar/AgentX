@@ -85,3 +85,48 @@ struct GitHubLiveTests {
         print("=== GitHub live: \(s.repos.count) repos, \(s.calendar.total) contributions, streak \(s.calendar.currentStreak), \(clones.count) local clones (\(matched) matched to your repos), \(clones.values.filter { !$0.isClean }.count) with local work")
     }
 }
+
+@Suite("Keeping clones current")
+struct CloneWatchTests {
+    private let dirs = ["/users/me/projects/agentx/.git": "/Users/me/Projects/AgentX",
+                        "/users/me/projects/news/.git": "/Users/me/Projects/news"]
+
+    @Test func aCommitRechecksThatRepoOnly() {
+        let change = GitHubParser.repoChanges([
+            "/Users/me/Projects/AgentX/.git/index",
+            "/Users/me/Projects/AgentX/.git/refs/heads/main",
+            "/Users/me/Projects/AgentX/.git/logs/HEAD",
+        ], gitDirs: dirs)
+        #expect(change.repos == ["/Users/me/Projects/AgentX"])
+        #expect(!change.remoteMoved)
+    }
+
+    @Test func aPushMovesTheRemoteBranch() {
+        let change = GitHubParser.repoChanges(["/Users/me/Projects/news/.git/refs/remotes/origin/main"], gitDirs: dirs)
+        #expect(change.repos == ["/Users/me/Projects/news"])
+        #expect(change.remoteMoved)
+    }
+
+    @Test func objectsLocksAndOtherFoldersAreIgnored() {
+        let change = GitHubParser.repoChanges([
+            "/Users/me/Projects/AgentX/.git/objects/ab/cdef",
+            "/Users/me/Projects/AgentX/.git/index.lock",
+            "/Users/me/Projects/AgentX/README.md",
+            "/Users/me/Projects/agentx-old/.git/index",
+        ], gitDirs: dirs)
+        #expect(change.repos.isEmpty)
+    }
+
+    @Test func findsTheGitFolderOfAWorktree() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("agentx-gitdir-\(UUID().uuidString)")
+        let repo = root.appendingPathComponent("repo"), worktree = root.appendingPathComponent("wt")
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: worktree, withIntermediateDirectories: true)
+        try "gitdir: ../repo/.git/worktrees/wt\n".write(to: worktree.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(GitHubService.gitDirectory(of: repo.path) == repo.path + "/.git")
+        #expect(GitHubService.gitDirectory(of: worktree.path) == repo.path + "/.git/worktrees/wt")
+        #expect(GitHubService.gitDirectory(of: root.path) == nil)
+    }
+}

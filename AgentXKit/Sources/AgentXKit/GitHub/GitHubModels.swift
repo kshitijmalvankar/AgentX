@@ -209,6 +209,22 @@ enum GitHubParser {
         return nil
     }
 
+    /// Which repos changed, from paths reported inside their git folders (`gitDirs`: lowercased git
+    /// folder → repo folder), and whether a remote-tracking branch moved (you pushed, or a fetch
+    /// brought commits), meaning GitHub's side changed too.
+    static func repoChanges(_ paths: [String], gitDirs: [String: String]) -> (repos: Set<String>, remoteMoved: Bool) {
+        var repos = Set<String>(), remoteMoved = false
+        for path in paths {
+            let p = path.lowercased()
+            // Objects are written along with a ref or index change; lock files are git's scratch.
+            if p.contains("/objects/") || p.hasSuffix(".lock") { continue }
+            guard let dir = gitDirs.keys.first(where: { p == $0 || p.hasPrefix($0 + "/") }), let repo = gitDirs[dir] else { continue }
+            repos.insert(repo)
+            if p.contains("/refs/remotes/") { remoteMoved = true }
+        }
+        return (repos, remoteMoved)
+    }
+
     /// Parse `git status --porcelain=v2 --branch`.
     static func status(_ porcelain: String) -> (branch: String?, changes: Int, ahead: Int, behind: Int) {
         var branch: String?, changes = 0, ahead = 0, behind = 0
