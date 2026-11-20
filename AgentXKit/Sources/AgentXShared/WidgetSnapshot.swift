@@ -54,6 +54,13 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
         public init(name: String, date: Date) { self.name = name; self.date = date }
     }
 
+    /// An automation, for the Run Automation control.
+    public struct AutomationRef: Codable, Sendable, Equatable, Hashable {
+        public var id: String
+        public var name: String
+        public init(id: String, name: String) { self.id = id; self.name = name }
+    }
+
     public var updatedAt: Date
     public var planLabel: String?
     public var usage: [UsageWindow]
@@ -63,13 +70,15 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     public var vitals: Vitals?
     public var github: GitHub?
     public var nextAutomation: NextAutomation?
+    /// All your automations (nil in snapshots written before controls existed).
+    public var automations: [AutomationRef]?
 
     public init(updatedAt: Date = Date(), planLabel: String? = nil, usage: [UsageWindow] = [], runningSessions: Int = 0,
                 waitingApprovals: Int = 0, activity: [Activity] = [], vitals: Vitals? = nil, github: GitHub? = nil,
-                nextAutomation: NextAutomation? = nil) {
+                nextAutomation: NextAutomation? = nil, automations: [AutomationRef]? = nil) {
         self.updatedAt = updatedAt; self.planLabel = planLabel; self.usage = usage; self.runningSessions = runningSessions
         self.waitingApprovals = waitingApprovals; self.activity = activity; self.vitals = vitals; self.github = github
-        self.nextAutomation = nextAutomation
+        self.nextAutomation = nextAutomation; self.automations = automations
     }
 
     // MARK: File
@@ -110,5 +119,6 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
                       diskFree: 80 << 30, diskTotal: 250 << 30, batteryLevel: 0.8, charging: false),
         github: .init(login: "you", totalContributions: 321, currentStreak: 4,
                       weeks: (0..<20).map { w in (0..<7).map { d in (w * 7 + d) % 5 } }),
-        nextAutomation: .init(name: "Morning brief", date: Date().addingTimeInterval(3600)))
+        nextAutomation: .init(name: "Morning brief", date: Date().addingTimeInterval(3600)),
+        automations: [.init(id: UUID().uuidString, name: "Morning brief")])
 }

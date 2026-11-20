@@ -55,6 +55,8 @@ final class WidgetSnapshotWriter {
             // Only you (and the widgets, which run as you) can read it.
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             WidgetCenter.shared.reloadAllTimelines()
+            // Control Center buttons show the approvals waiting and list your automations.
+            ControlCenter.shared.reloadAllControls()
         } catch {
             // Widgets keep their last data; nothing else depends on this file.
         }
@@ -83,7 +85,8 @@ final class WidgetSnapshotWriter {
             activity: live.prefix(3).map { .init(title: $0.title, state: $0.liveState?.label ?? "Ready") },
             vitals: vitals,
             github: github,
-            nextAutomation: next
+            nextAutomation: next,
+            automations: model.automations.automations.map { .init(id: $0.id.uuidString, name: $0.name) }
         )
     }
 

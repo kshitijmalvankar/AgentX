@@ -1,4 +1,4 @@
-// AgentX desktop widgets. They read the snapshot
+// AgentX desktop widgets and Control Center buttons. They read the snapshot
 // AgentX writes to ~/Library/Application Support/AgentX/widget-snapshot.json
 // ("AgentX Dev" for the Dev app) every 15 minutes and after important changes,
 // and never talk to Claude or GitHub.
@@ -12,6 +12,10 @@ struct AgentXWidgets: WidgetBundle {
         ClaudeWidget()
         VitalsWidget()
         GitHubWidget()
+        AskControl()
+        RunAutomationControl()
+        ApprovalsControl()
+        StopEverythingControl()
     }
 }
 
