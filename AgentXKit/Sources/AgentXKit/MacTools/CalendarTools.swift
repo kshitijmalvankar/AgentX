@@ -6,6 +6,30 @@ actor CalendarService {
     static let shared = CalendarService()
     private let store = EKEventStore()
 
+    struct UpcomingEvent: Sendable {
+        var id: String
+        var title: String
+        var start: Date
+        var location: String?
+        var attendees: [String]
+    }
+
+    /// Timed events starting between `from` and `to`, for automation triggers. Never asks
+    /// for access: without full Calendar access there are none.
+    func upcomingTimedEvents(from: Date, to: Date) -> [UpcomingEvent] {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return [] }
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return store.events(matching: predicate)
+            .filter { !$0.isAllDay && $0.startDate >= from && $0.status != .canceled }
+            .map { event in
+                UpcomingEvent(id: event.eventIdentifier ?? event.calendarItemIdentifier,
+                              title: event.title ?? "Untitled event",
+                              start: event.startDate,
+                              location: event.location,
+                              attendees: (event.attendees ?? []).compactMap { $0.name ?? $0.url.absoluteString.replacingOccurrences(of: "mailto:", with: "") })
+            }
+    }
+
     private func ensureAccess(to type: EKEntityType) async throws {
         let name = type == .event ? "Calendars" : "Reminders"
         switch EKEventStore.authorizationStatus(for: type) {

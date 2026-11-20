@@ -133,11 +133,9 @@ private struct AutomationCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(automation.name.isEmpty ? "Untitled" : automation.name).font(.headline)
                     HStack(spacing: 6) {
-                        Label(automation.schedule.label, systemImage: "clock")
+                        Label(automation.whenLabel, systemImage: automation.trigger?.symbol ?? "clock")
                         Text("·")
-                        Text(automation.kind == .assistant ? "Assistant"
-                             : automation.kind == .onDevice ? "On this Mac"
-                             : "Coding in \(((automation.folder ?? "~") as NSString).lastPathComponent)")
+                        Text(automation.kindLabel)
                     }
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -158,6 +156,8 @@ private struct AutomationCard: View {
                     Text("Running now…").font(.callout).foregroundStyle(.secondary)
                 } else if let next = center.nextRun(of: automation) {
                     Label("Next: \(next.scheduleLabel)", systemImage: "calendar").font(.callout)
+                } else if automation.enabled, automation.trigger != nil {
+                    Label("Watching", systemImage: "eye").font(.callout).help("Runs when it happens")
                 } else {
                     Text("Off").font(.callout).foregroundStyle(.tertiary)
                 }
@@ -212,9 +212,12 @@ private struct RunRow: View {
                     Text(run.automationName).fontWeight(.medium)
                     Text(run.startedAt.scheduleLabel).foregroundStyle(.secondary)
                     if run.trigger != .scheduled {
-                        Text(run.trigger == .manual ? "run by you" : "caught up after wake")
+                        Text(run.trigger == .manual ? "run by you"
+                             : run.trigger == .event ? "after: \(run.event ?? "its trigger")"
+                             : "caught up after wake")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                     }
                 }
                 if let summary = run.summary, !summary.isEmpty {
@@ -363,6 +366,17 @@ private struct AutomationEditor: View {
         if draft.kind == .assistant || draft.kind == .onDevice { draft.folder = nil; draft.allowedTools = [] }
         if isNew { model.automations.add(draft) } else { model.automations.update(draft) }
         dismiss()
+    }
+}
+
+extension Automation {
+    var kindLabel: String {
+        switch kind {
+        case .assistant: "Assistant"
+        case .onDevice: "On this Mac"
+        case .notify: "Notification"
+        case .coding: "Coding in \(((folder ?? "~") as NSString).lastPathComponent)"
+        }
     }
 }
 

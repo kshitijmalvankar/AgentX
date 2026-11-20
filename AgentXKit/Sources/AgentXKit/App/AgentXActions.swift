@@ -42,8 +42,9 @@ public enum AgentXActions {
             case .assistant: "Claude on this Mac"
             case .coding: "Coding in \((a.folder.map { ($0 as NSString).lastPathComponent }) ?? "a project")"
             case .onDevice: "Written on this Mac"
+            case .notify: "Notification"
             }
-            return AutomationSummary(id: a.id, name: a.name, detail: "\(a.enabled ? a.schedule.label : "Off") · \(kind)")
+            return AutomationSummary(id: a.id, name: a.name, detail: "\(a.enabled ? a.whenLabel : "Off") · \(kind)")
         }
     }
 
@@ -95,7 +96,7 @@ public enum AgentXActions {
     @discardableResult
     public static func runAutomation(id: UUID, from source: String) async throws -> String {
         guard let automation = model.automations.automations.first(where: { $0.id == id }) else { throw Failure.noSuchAutomation }
-        if automation.kind != .onDevice {
+        if automation.kind == .assistant || automation.kind == .coding {
             await model.bootstrap()
             guard model.client.status == .ready else { throw Failure.cantStart("AgentX's engine isn't running. Open AgentX to see why.") }
         }

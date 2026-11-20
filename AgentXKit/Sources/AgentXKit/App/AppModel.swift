@@ -71,6 +71,8 @@ public final class AppModel {
     public let github = GitHubStore()
     /// Scheduled Claude tasks.
     public let automations = AutomationCenter()
+    /// Starts automations when something happens (a file, a meeting, a pull request…).
+    let triggers = TriggerEngine()
     /// Your Claude plan's usage (session and weekly limits).
     public let usage: UsageStore
     /// What Claude and AgentX did that changed something, and every security decision.
@@ -140,6 +142,8 @@ public final class AppModel {
         sessions.memoryPrompt = { MemoryStore.shared.promptSection() }
         github.context = { [weak self] in (self?.client.paths?.shellPath, self?.sessions.recentProjects ?? []) }
         automations.sessions = sessions
+        triggers.center = automations
+        triggers.github = github
         automations.planUsage = { [weak self] in self?.usage.usage?.highest }
         sessions.onTurnFinished = { [weak self] c, result in
             self?.automations.turnFinished(c, result: result)
@@ -177,6 +181,7 @@ public final class AppModel {
         github.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
         automations.onChange = { [weak self] in
             self?.widgetWriter?.setNeedsWrite()
+            self?.triggers.update()
             AgentXActions.automationsChanged?()
         }
     }
@@ -208,6 +213,7 @@ public final class AppModel {
         _ = await (tools, list, acct)
         usage.start()
         automations.start()
+        triggers.update()
         phone.attach(self)
         let writer = WidgetSnapshotWriter(model: self)
         widgetWriter = writer

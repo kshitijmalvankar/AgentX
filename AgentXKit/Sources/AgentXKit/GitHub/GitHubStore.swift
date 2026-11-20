@@ -26,6 +26,8 @@ public final class GitHubStore {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// Called after each successful refresh (e.g. to update the widgets).
     @ObservationIgnored var onUpdate: (() -> Void)?
+    /// Called with each fresh load of your pull requests (GitHub automation triggers).
+    @ObservationIgnored var pullRequestsChanged: ((GitHubPullRequests) -> Void)?
 
     // Clones: a full scan now and then, and a watch on each one's git folder in between.
     @ObservationIgnored private var clonesScannedAt: Date?
@@ -74,7 +76,10 @@ public final class GitHubStore {
             do {
                 snapshot = try await GitHubService.fetch(gh: gh, path: path)
                 state = .loaded
-                pullRequests = try? await GitHubService.fetchPullRequests(gh: gh, path: path)
+                if let fresh = try? await GitHubService.fetchPullRequests(gh: gh, path: path) {
+                    pullRequests = fresh
+                    pullRequestsChanged?(fresh)
+                }
                 onUpdate?()
             } catch GitHubError.notSignedIn {
                 state = .needsSignIn

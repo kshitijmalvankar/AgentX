@@ -45,7 +45,67 @@ public enum AutomationSchedule: Codable, Equatable, Sendable {
     }
 }
 
-/// A saved Claude task that runs on a schedule.
+/// What starts an automation instead of its schedule: something happening on
+/// your Mac, in your calendar, mail or GitHub (TriggerEngine watches for it).
+public enum AutomationTrigger: Codable, Equatable, Hashable, Sendable {
+    /// A new file appears in a folder; `pattern` limits it to names like "*.pdf" (several: "*.pdf, *.png").
+    case fileAdded(folder: String, pattern: String?)
+    /// A timed calendar event starts in `minutesBefore` minutes; optionally only titles containing some text.
+    case calendarEventSoon(minutesBefore: Int, titleContains: String?)
+    /// An app opens.
+    case appLaunched(bundleID: String, name: String)
+    /// The Mac wakes from sleep.
+    case macWoke
+    /// You unlock the Mac for the first time today.
+    case firstUnlockOfDay
+    /// The power cable goes in.
+    case powerConnected
+    /// The battery drops below a level while on battery.
+    case batteryBelow(percent: Int)
+    /// New unread mail in Mail from a sender whose name or address contains the text.
+    case mailFrom(sender: String)
+    /// Someone asks for your review on a GitHub pull request.
+    case reviewRequested
+    /// Checks fail on one of your open pull requests.
+    case checksFailed
+
+    public var label: String {
+        switch self {
+        case .fileAdded(let folder, let pattern):
+            let place = (folder as NSString).lastPathComponent
+            if let pattern, !pattern.isEmpty { return "When \(pattern) is added to \(place)" }
+            return "When a file is added to \(place)"
+        case .calendarEventSoon(let minutes, let title):
+            let what = title.map { "“\($0)”" } ?? "an event"
+            return "\(minutes) min before \(what)"
+        case .appLaunched(_, let name): return "When \(name) opens"
+        case .macWoke: return "When the Mac wakes"
+        case .firstUnlockOfDay: return "First unlock of the day"
+        case .powerConnected: return "When plugged in"
+        case .batteryBelow(let percent): return "When the battery drops below \(percent)%"
+        case .mailFrom(let sender): return "When mail arrives from \(sender)"
+        case .reviewRequested: return "When your review is requested on GitHub"
+        case .checksFailed: return "When checks fail on your pull request"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .fileAdded: "folder.badge.plus"
+        case .calendarEventSoon: "calendar.badge.clock"
+        case .appLaunched: "app.badge"
+        case .macWoke: "sun.max"
+        case .firstUnlockOfDay: "lock.open"
+        case .powerConnected: "powerplug"
+        case .batteryBelow: "battery.25percent"
+        case .mailFrom: "envelope.badge"
+        case .reviewRequested: "person.crop.circle.badge.questionmark"
+        case .checksFailed: "xmark.octagon"
+        }
+    }
+}
+
+/// A saved task that runs on a schedule, or when something happens.
 public struct Automation: Codable, Identifiable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         /// With the Mac tools, in the assistant's folder.
@@ -55,6 +115,8 @@ public struct Automation: Codable, Identifiable, Equatable, Sendable {
         /// A briefing written on this Mac (Apple's on-device model) from your calendar,
         /// reminders and unread mail. No Claude: it doesn't use your plan.
         case onDevice
+        /// Just a notification saying what happened (and your note). No Claude, no model.
+        case notify
     }
 
     public var id = UUID()
@@ -64,17 +126,22 @@ public struct Automation: Codable, Identifiable, Equatable, Sendable {
     /// Project folder for coding automations.
     public var folder: String?
     public var schedule: AutomationSchedule
+    /// Runs when this happens instead of on `schedule` (nil: on the schedule).
+    public var trigger: AutomationTrigger?
     public var enabled: Bool
     /// Extra Claude Code permission rules for unattended coding runs, e.g. "Bash(git status:*)".
     public var allowedTools: [String] = []
     public var createdAt = Date()
     /// When the schedule last fired (manual runs don't move it).
     public var lastScheduledAt: Date?
+
+    /// "Weekdays at 8:00", or "When a file is added to Downloads".
+    public var whenLabel: String { trigger?.label ?? schedule.label }
 }
 
 public struct AutomationRun: Codable, Identifiable, Equatable, Sendable {
     public enum Status: String, Codable, Sendable { case running, succeeded, failed, skipped }
-    public enum Trigger: String, Codable, Sendable { case scheduled, manual, catchUp }
+    public enum Trigger: String, Codable, Sendable { case scheduled, manual, catchUp, event }
 
     public var id = UUID()
     public var automationID: UUID
@@ -89,6 +156,8 @@ public struct AutomationRun: Codable, Identifiable, Equatable, Sendable {
     public var cwd: String?
     /// Approvals nobody answered in time (denied automatically).
     public var unansweredApprovals = 0
+    /// What set it off, for runs started by a trigger ("report.pdf was added to Downloads").
+    public var event: String?
 }
 
 /// What the scheduler should do about one automation right now.
