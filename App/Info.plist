@@ -60,6 +60,61 @@
 	<string>AgentX listens only while you hold the launcher shortcut to talk (or click its microphone), or use voice mode in Claude chats.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>AgentX turns what you say into text on this Mac (on-device recognition), only while you hold the launcher shortcut or click its microphone.</string>
+	<!-- Right-click → Services in any app (App/ServicesProvider.swift in AgentXKit). -->
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Ask $(PRODUCT_NAME)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>askAgentX</string>
+			<key>NSPortName</key>
+			<string>$(PRODUCT_NAME)</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSStringPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Summarize with $(PRODUCT_NAME)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>summarizeWithAgentX</string>
+			<key>NSPortName</key>
+			<string>$(PRODUCT_NAME)</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSStringPboardType</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Ask $(PRODUCT_NAME) About These Files</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>askAboutFiles</string>
+			<key>NSPortName</key>
+			<string>$(PRODUCT_NAME)</string>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>AgentX, powered by Claude.</string>
 	<!-- AgentX Dev only: where the agent-core sidecar lives (the repo checkout). Empty in installed builds. -->

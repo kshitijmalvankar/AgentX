@@ -211,6 +211,28 @@ final class LauncherController {
         }
     }
 
+    /// From the Services menu in another app: open with what you selected there attached
+    /// (text, or files in Finder), ready for a question, or doing `job` with the text right away.
+    func showShared(text: String?, files: [String], job: LocalWriter.Job? = nil, claudePrompt: String = "") {
+        Task {
+            await showOverYourApp(prefill: nil)
+            let app = openedOver.flatMap { $0.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : $0 }
+            var shared = ScreenContext(appName: app?.localizedName ?? "another app", bundleID: app?.bundleIdentifier)
+            if let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                // Same rule as a selection the launcher reads itself: a secret isn't kept.
+                if let secret = SecretDetector.find(in: text) { shared.selectionWithheld = secret } else { shared.selectedText = text }
+            }
+            shared.finderSelection = files
+            captureTask?.cancel()
+            context = shared
+            contextApp = app
+            dropped = []
+            includeContext = true
+            fromSelection = true
+            if let job, let text = shared.selectedText { write(job, text: text, claudePrompt: claudePrompt) }
+        }
+    }
+
     /// Open on a conversation (one Siri or a Shortcut started that's still going).
     func showConversation(_ id: String) {
         Task {
