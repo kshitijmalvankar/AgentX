@@ -179,6 +179,21 @@ final class LauncherController {
         focusToken += 1
     }
 
+    /// From an agentx://launcher link (Control Center, a Shortcut, a widget). Opening a link
+    /// brings AgentX forward, which would take the keyboard from the launcher: once that has
+    /// happened, hand the screen back to the app you were in, then open over it like ⌥Space.
+    func showFromLink(prefill: String?) {
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            if let app = FrontmostTracker.shared.appToReturnTo() {
+                NSApp.yieldActivation(to: app)
+                app.activate()
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            show(prefill: prefill)
+        }
+    }
+
     /// Centered near the top of the screen, or with its corner by the pointer (kept on screen).
     private func place(_ panel: NSPanel, anchor: Anchor) {
         let mouse = NSEvent.mouseLocation

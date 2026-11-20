@@ -433,7 +433,7 @@ public final class AppModel {
             claudeMode = mode
             showMainWindow()
         case .launcher(let prefill):
-            LauncherController.shared.show(prefill: prefill)
+            LauncherController.shared.showFromLink(prefill: prefill)
         case .approvals:
             sidebar = .sessions
             showMainWindow()

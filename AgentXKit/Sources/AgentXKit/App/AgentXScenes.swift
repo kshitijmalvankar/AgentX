@@ -51,6 +51,20 @@ public struct AgentXScenes: Scene {
 /// App-level hooks SwiftUI doesn't cover.
 @MainActor
 public final class AgentXAppDelegate: NSObject, NSApplicationDelegate {
+    public func applicationWillFinishLaunching(_ notification: Notification) {
+        // agentx:// links come here instead of to SwiftUI, which brings the main window
+        // forward for every link (and so closed the launcher a link had just opened).
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleURLEvent(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+
+    @objc private func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: text) else { return }
+        AppModel.shared.handle(url)
+    }
+
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Needed when running the bare `AgentXDev` binary (no .app bundle).
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
@@ -84,7 +98,6 @@ struct RootView: View {
             detail
                 .overlay(alignment: .top) { EngineBanner() }
         }
-        .onOpenURL { model.handle($0) }
         .sheet(isPresented: $model.showNewSession) { NewSessionSheet().environment(model) }
         .sheet(isPresented: $model.showLogin) { LoginSheet().environment(model) }
     }

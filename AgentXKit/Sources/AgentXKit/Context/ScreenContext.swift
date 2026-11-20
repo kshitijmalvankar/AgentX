@@ -173,8 +173,23 @@ final class FrontmostTracker {
     }
 
     private func note(_ app: NSRunningApplication?) {
-        guard let app, app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        guard let app else { return }
+        guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            agentXCameForwardAt = Date()
+            return
+        }
         lastApp = app
+    }
+
+    /// When AgentX last became the active app.
+    private(set) var agentXCameForwardAt: Date?
+
+    /// The app to give the screen back to, when AgentX came forward in the last
+    /// `seconds` (an agentx:// link from Control Center or a Shortcut brings it forward).
+    func appToReturnTo(within seconds: TimeInterval = 2) -> NSRunningApplication? {
+        guard let at = agentXCameForwardAt, Date().timeIntervalSince(at) < seconds,
+              let app = lastApp, !app.isTerminated else { return nil }
+        return app
     }
 }
 
