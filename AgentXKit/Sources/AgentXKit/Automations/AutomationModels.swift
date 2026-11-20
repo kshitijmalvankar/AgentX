@@ -184,6 +184,35 @@ enum AutomationTiming {
 
 /// The starter automations (added turned off).
 enum AutomationTemplates {
+    /// Starters that run when something happens (added once, turned off, for people who already have automations).
+    static var triggered: [Automation] {[
+        Automation(
+            name: "Meeting prep",
+            prompt: "A meeting starts soon (details below). Look for related notes, recent emails with the people in it, and files that mention it. Give me a short prep: what it's about, what's still open, and anything I should bring up.",
+            kind: .assistant, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
+            trigger: .calendarEventSoon(minutesBefore: 10, titleContains: nil), enabled: false),
+        Automation(
+            name: "Downloads sorter",
+            prompt: "A new file arrived in Downloads (below). In one or two lines, suggest where it belongs and why. Only if a folder clearly fits, move it with files_move, so I can approve the move.",
+            kind: .assistant, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
+            trigger: .fileAdded(folder: NSHomeDirectory() + "/Downloads", pattern: nil), enabled: false),
+        Automation(
+            name: "PR review nudge",
+            prompt: "Someone is waiting for your review.",
+            kind: .notify, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
+            trigger: .reviewRequested, enabled: false),
+        Automation(
+            name: "Low battery",
+            prompt: "Plug in soon, or save your work.",
+            kind: .notify, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
+            trigger: .batteryBelow(percent: 20), enabled: false),
+        Automation(
+            name: "Welcome back",
+            prompt: "",
+            kind: .onDevice, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
+            trigger: .firstUnlockOfDay, enabled: false),
+    ]}
+
     static var all: [Automation] {[
         Automation(
             name: "Morning brief",

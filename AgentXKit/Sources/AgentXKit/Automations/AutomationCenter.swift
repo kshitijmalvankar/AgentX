@@ -36,6 +36,7 @@ public final class AutomationCenter {
         didSet { defaults.set(isPaused, forKey: Self.pausedKey) }
     }
     static let pausedKey = "automationsPaused"
+    static let triggeredStartersKey = "triggeredStartersAdded"
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(directory: URL = AppChannel.current.dataDirectory, defaults: UserDefaults = .standard,
@@ -59,7 +60,16 @@ public final class AutomationCenter {
             do { automations = try decoder.decode([Automation].self, from: data) }
             catch { storageError = "Couldn't read automations.json: \(error.localizedDescription)" }
         } else {
-            automations = AutomationTemplates.all   // first launch: the starters, turned off
+            // First launch: the starters, turned off.
+            automations = AutomationTemplates.all + AutomationTemplates.triggered
+            defaults.set(true, forKey: Self.triggeredStartersKey)
+            save()
+        }
+        // Earlier versions had no triggers: add those starters once (turned off).
+        if !defaults.bool(forKey: Self.triggeredStartersKey), storageError == nil {
+            let names = Set(automations.map(\.name))
+            automations += AutomationTemplates.triggered.filter { !names.contains($0.name) }
+            defaults.set(true, forKey: Self.triggeredStartersKey)
             save()
         }
         if let data = try? Data(contentsOf: runsFile), let saved = try? decoder.decode([AutomationRun].self, from: data) {

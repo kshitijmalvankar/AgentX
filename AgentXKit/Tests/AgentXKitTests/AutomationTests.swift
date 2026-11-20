@@ -57,7 +57,8 @@ struct AutomationCenterTests {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let center = AutomationCenter(directory: dir)
-        #expect(center.automations.map(\.name) == ["Morning brief", "Repo check", "Tidy Downloads"])
+        #expect(center.automations.map(\.name) == ["Morning brief", "Repo check", "Tidy Downloads",
+                                                     "Meeting prep", "Downloads sorter", "PR review nudge", "Low battery", "Welcome back"])
         #expect(center.automations.allSatisfy { !$0.enabled })
         #expect(center.upcoming.isEmpty)
 

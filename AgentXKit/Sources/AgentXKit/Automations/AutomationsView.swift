@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Opens AgentX when you log in, so automations can run (macOS login item).
 enum LaunchAtLogin {
@@ -80,7 +81,7 @@ struct AutomationsView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Automations").font(.largeTitle.bold())
-                    Text("Claude tasks that run on a schedule, with the same tools and approvals as the Assistant.")
+                    Text("Tasks that run on a schedule or when something happens: Claude with the Assistant's tools and approvals, a briefing written on this Mac, or just a notification.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -93,7 +94,7 @@ struct AutomationsView: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "info.circle").foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Automations run only while AgentX is open (it can stay in the menu bar). Anything that needs your OK is sent as a notification and skipped after 10 minutes without an answer. Each run uses your Claude plan.")
+                    Text("Automations run only while AgentX is open (it can stay in the menu bar). Anything that needs your OK is sent as a notification and skipped after 10 minutes without an answer. Claude runs use your plan. A trigger starts its automation at most once every 10 minutes, and triggers start at most 20 runs a day.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Toggle("Open AgentX at login", isOn: $launchAtLogin)
@@ -261,10 +262,43 @@ private struct AutomationEditor: View {
     @State private var weekdays: Set<Int> = []
     @State private var hours = 3
     @State private var allowedText = ""
+    @State private var starts: TriggerChoice = .schedule
+    @State private var folder = NSHomeDirectory() + "/Downloads"
+    @State private var pattern = ""
+    @State private var minutesBefore = 10
+    @State private var titleContains = ""
+    @State private var app: (id: String, name: String)?
+    @State private var batteryPercent = 20
+    @State private var sender = ""
 
     init(original: Automation) {
         self.original = original
         _draft = State(initialValue: original)
+        switch original.trigger {
+        case nil: break
+        case .fileAdded(let f, let p):
+            _starts = State(initialValue: .fileAdded)
+            _folder = State(initialValue: f)
+            _pattern = State(initialValue: p ?? "")
+        case .calendarEventSoon(let m, let t):
+            _starts = State(initialValue: .calendar)
+            _minutesBefore = State(initialValue: m)
+            _titleContains = State(initialValue: t ?? "")
+        case .appLaunched(let id, let name):
+            _starts = State(initialValue: .appLaunched)
+            _app = State(initialValue: (id, name))
+        case .macWoke: _starts = State(initialValue: .macWoke)
+        case .firstUnlockOfDay: _starts = State(initialValue: .firstUnlock)
+        case .powerConnected: _starts = State(initialValue: .powerConnected)
+        case .batteryBelow(let p):
+            _starts = State(initialValue: .batteryLow)
+            _batteryPercent = State(initialValue: p)
+        case .mailFrom(let s):
+            _starts = State(initialValue: .mail)
+            _sender = State(initialValue: s)
+        case .reviewRequested: _starts = State(initialValue: .reviewRequested)
+        case .checksFailed: _starts = State(initialValue: .checksFailed)
+        }
         switch original.schedule {
         case .daily(let hour, let minute, let days):
             _time = State(initialValue: Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date())
@@ -284,7 +318,8 @@ private struct AutomationEditor: View {
             Form {
                 TextField("Name", text: $draft.name, prompt: Text("Morning brief"))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("What should Claude do?")
+                    Text(draft.kind == .notify ? "Note in the notification (optional)"
+                         : draft.kind == .onDevice ? "What to focus on (optional)" : "What should Claude do?")
                     TextEditor(text: $draft.prompt)
                         .font(.body)
                         .frame(minHeight: 90)
@@ -296,6 +331,12 @@ private struct AutomationEditor: View {
                     Text("Assistant (Calendar, Files, Mail, …)").tag(Automation.Kind.assistant)
                     Text("Coding session in a folder").tag(Automation.Kind.coding)
                     Text("Briefing on this Mac (no Claude)").tag(Automation.Kind.onDevice)
+                    Text("Just a notification (no Claude)").tag(Automation.Kind.notify)
+                }
+                if draft.kind == .notify {
+                    Text("A notification saying what happened, with your note. Nothing else runs.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if draft.kind == .onDevice {
                     Text("Written on this Mac by Apple Intelligence from your calendar, reminders and unread mail, and shown as a notification. It doesn't use your Claude plan. Below, say what to focus on (or leave it empty).")
@@ -313,6 +354,14 @@ private struct AutomationEditor: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Picker("Starts", selection: $starts) {
+                    ForEach(TriggerChoice.allCases) { choice in
+                        Label(choice.title, systemImage: choice.symbol).tag(choice)
+                    }
+                }
+                if starts != .schedule {
+                    triggerFields
+                } else {
                 Picker("Schedule", selection: $everyHours) {
                     Text("At a time").tag(false)
                     Text("Every few hours").tag(true)
@@ -340,6 +389,7 @@ private struct AutomationEditor: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                }
                 Toggle("On", isOn: $draft.enabled)
             }
             .formStyle(.grouped)
@@ -350,8 +400,9 @@ private struct AutomationEditor: View {
                     .primaryButton()
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty
-                              || (draft.kind != .onDevice && draft.prompt.trimmingCharacters(in: .whitespaces).isEmpty)
-                              || (draft.kind == .coding && draft.folder == nil))
+                              || ((draft.kind == .assistant || draft.kind == .coding) && draft.prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+                              || (draft.kind == .coding && draft.folder == nil)
+                              || trigger == nil && starts != .schedule)
             }
         }
         .padding(20)
@@ -362,10 +413,134 @@ private struct AutomationEditor: View {
         let parts = Calendar.current.dateComponents([.hour, .minute], from: time)
         draft.schedule = everyHours ? .interval(hours: hours)
             : .daily(hour: parts.hour ?? 9, minute: parts.minute ?? 0, weekdays: weekdays)
+        draft.trigger = trigger
         draft.allowedTools = allowedText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if draft.kind == .assistant || draft.kind == .onDevice { draft.folder = nil; draft.allowedTools = [] }
+        if draft.kind != .coding { draft.folder = nil; draft.allowedTools = [] }
         if isNew { model.automations.add(draft) } else { model.automations.update(draft) }
         dismiss()
+    }
+}
+
+extension AutomationEditor {
+    /// The trigger the fields describe (nil: on the schedule, or a field still missing).
+    var trigger: AutomationTrigger? {
+        let trimmed = { (text: String) -> String? in
+            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        switch starts {
+        case .schedule: return nil
+        case .fileAdded: return folder.isEmpty ? nil : .fileAdded(folder: folder, pattern: trimmed(pattern))
+        case .calendar: return .calendarEventSoon(minutesBefore: minutesBefore, titleContains: trimmed(titleContains))
+        case .appLaunched: return app.map { .appLaunched(bundleID: $0.id, name: $0.name) }
+        case .macWoke: return .macWoke
+        case .firstUnlock: return .firstUnlockOfDay
+        case .powerConnected: return .powerConnected
+        case .batteryLow: return .batteryBelow(percent: batteryPercent)
+        case .mail: return trimmed(sender).map { .mailFrom(sender: $0) }
+        case .reviewRequested: return .reviewRequested
+        case .checksFailed: return .checksFailed
+        }
+    }
+
+    @ViewBuilder var triggerFields: some View {
+        switch starts {
+        case .schedule:
+            EmptyView()
+        case .fileAdded:
+            LabeledContent("Folder") {
+                HStack {
+                    Text(folder.abbreviatingHome).lineLimit(1).truncationMode(.middle)
+                    Button("Choose…") { chooseFolder() }
+                }
+            }
+            TextField("Only files named", text: $pattern, prompt: Text("Any file (or e.g. *.pdf, *.png)"))
+            note("Files added straight into the folder. Downloads still in progress and hidden files don't count.")
+        case .calendar:
+            Stepper("\(minutesBefore) minutes before it starts", value: $minutesBefore, in: 1...120)
+            TextField("Only events with", text: $titleContains, prompt: Text("Any timed event (or words in the title)"))
+            note("Needs Calendar access for AgentX (System Settings › Privacy & Security › Calendars). All-day events don't count.")
+        case .appLaunched:
+            LabeledContent("App") {
+                HStack {
+                    Text(app?.name ?? "None chosen").foregroundStyle(app == nil ? .secondary : .primary)
+                    Button("Choose…") { chooseApp() }
+                }
+            }
+        case .macWoke, .firstUnlock, .powerConnected:
+            EmptyView()
+        case .batteryLow:
+            Stepper("Below \(batteryPercent)%", value: $batteryPercent, in: 5...80, step: 5)
+            note("Once each time it drops below, while the Mac isn't plugged in.")
+        case .mail:
+            TextField("From", text: $sender, prompt: Text("Name or address, e.g. boss@company.com"))
+            note("New unread mail in the Mail app, checked every 5 minutes while Mail is open.")
+        case .reviewRequested, .checksFailed:
+            note("Checked every few minutes through GitHub (the gh command line tool, signed in).")
+        }
+        if draft.kind == .assistant || draft.kind == .coding {
+            note("Claude gets what happened (a file name, an event title, a mail subject…) as outside data it won't take instructions from. Sending anything out asks you first.")
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text).font(.caption).foregroundStyle(.secondary)
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.directoryURL = URL(fileURLWithPath: folder)
+        if panel.runModal() == .OK, let url = panel.url { folder = url.path }
+    }
+
+    private func chooseApp() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK, let url = panel.url, let id = Bundle(url: url)?.bundleIdentifier else { return }
+        app = (id, FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
+    }
+}
+
+/// The "Starts" choices in the editor.
+enum TriggerChoice: String, CaseIterable, Identifiable {
+    case schedule, fileAdded, calendar, appLaunched, macWoke, firstUnlock, powerConnected, batteryLow, mail, reviewRequested, checksFailed
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .schedule: "On a schedule"
+        case .fileAdded: "When a file is added to a folder"
+        case .calendar: "Before a calendar event"
+        case .appLaunched: "When an app opens"
+        case .macWoke: "When the Mac wakes"
+        case .firstUnlock: "When I first unlock the Mac each day"
+        case .powerConnected: "When the Mac is plugged in"
+        case .batteryLow: "When the battery is low"
+        case .mail: "When mail arrives from someone"
+        case .reviewRequested: "When my review is requested on GitHub"
+        case .checksFailed: "When checks fail on my pull request"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .schedule: "clock"
+        case .fileAdded: "folder.badge.plus"
+        case .calendar: "calendar.badge.clock"
+        case .appLaunched: "app.badge"
+        case .macWoke: "sun.max"
+        case .firstUnlock: "lock.open"
+        case .powerConnected: "powerplug"
+        case .batteryLow: "battery.25percent"
+        case .mail: "envelope.badge"
+        case .reviewRequested: "person.crop.circle.badge.questionmark"
+        case .checksFailed: "xmark.octagon"
+        }
     }
 }
 

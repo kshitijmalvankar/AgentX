@@ -213,4 +213,21 @@ struct TriggerRunTests {
         #expect(engine.runningSources.isEmpty)
         engine.stopAll()
     }
+
+    @Test func triggeredStartersAreAddedOnceForExistingUsers() throws {
+        let dir = tempDir()
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        // An automations.json from before triggers existed.
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(AutomationTemplates.all).write(to: dir.appendingPathComponent("automations.json"))
+        let center = AutomationCenter(directory: dir, defaults: scratch.defaults, pausedByDefault: false)
+        #expect(center.automations.count == AutomationTemplates.all.count + AutomationTemplates.triggered.count)
+        #expect(center.automations.filter { $0.trigger != nil }.allSatisfy { !$0.enabled })
+        center.delete(center.automations.first { $0.name == "Low battery" }!.id)
+        let reloaded = AutomationCenter(directory: dir, defaults: scratch.defaults, pausedByDefault: false)
+        #expect(!reloaded.automations.contains { $0.name == "Low battery" }, "a starter you deleted doesn't come back")
+    }
 }
