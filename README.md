@@ -204,13 +204,35 @@ The widgets read a snapshot that AgentX writes to `~/Library/Application Support
 
 ### Automations
 
-**Automations** are Claude tasks that run on a schedule: daily at a time, on chosen weekdays, or every few hours. Each one runs either as the Assistant (with the Mac tools) or as a coding session in a folder. Three starters come turned off:
+**Automations** are tasks that run on a schedule (daily at a time, on chosen weekdays, or every few hours) or **when something happens**. Each one runs as one of these:
+- the Assistant (Claude with the Mac tools)
+- a coding session in a folder
+- a briefing written on your Mac (no Claude)
+- just a notification (no Claude)
+
+**Triggers** (the **Starts** picker when you edit an automation):
+- a file is added to a folder (optionally only names like `*.pdf`)
+- a calendar event starts in N minutes
+- an app opens
+- the Mac wakes, or you unlock it for the first time today
+- it's plugged in, or the battery drops below a level
+- unread mail arrives in Mail from someone (checked every 5 minutes while Mail is open)
+- your review is requested on GitHub, or checks fail on your pull request
+
+Each watcher runs only while an enabled automation needs it. Each happening fires once. An automation runs at most once every 10 minutes, and triggers start at most 20 runs a day. What set a run off (a file name, an event title, a mail subject) reaches Claude as outside data it won't take instructions from, and sending anything out asks you first.
+
+Eight starters come turned off:
 
 | Starter | When | What it does |
 |---|---|---|
 | Morning brief | Weekdays 8:00 | Today's calendar, reminders and unread mail |
 | Repo check | Daily 18:00 | Uses `repos_status` to list local repos with uncommitted or unpushed work |
 | Tidy Downloads | Sundays 10:00 | Proposes moves, and each one needs your OK |
+| Meeting prep | 10 minutes before an event | Claude prepares you from related mail, notes and files |
+| Downloads sorter | A file lands in Downloads | Claude suggests where it goes; moving it asks first |
+| PR review nudge | Your review is requested | A notification |
+| Low battery | Below 20% on battery | A notification |
+| Welcome back | First unlock of the day | A briefing written on your Mac |
 
 How runs behave:
 - The scheduler runs inside AgentX. It checks every 30 seconds and again after the Mac wakes. **Open AgentX at login** keeps it available.
@@ -218,6 +240,7 @@ How runs behave:
 - Unattended runs never approve risky steps. They send a notification with Allow and Deny buttons, and deny the step after 10 minutes without an answer.
 - Each run ends with a short summary, shown as a notification, on the dashboard and in the run history, with its full conversation one click away.
 - Runs stop after 20 minutes, and are skipped when your plan usage is at 90% or more.
+- Pausing automations (or **Stop everything**) pauses triggers too.
 - Automations and run history are stored in `~/Library/Application Support/AgentX/`.
 
 ### GitHub
@@ -276,6 +299,6 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] iPhone companion: monitor, approve with Face ID, Stop Everything, message Claude on your Mac (encrypted link, QR pairing)
 - [x] M7: memory (Settings → Memory) and context (what's on screen, selection, browser tab, Look at Window)
 - [x] M8: Siri, Shortcuts, Spotlight, right-click Services, voice, Control Center
-- [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)
+- [x] M9: proactive triggers (files, calendar, apps, wake and unlock, power and battery, mail, GitHub)
 - [ ] M10: long-running tasks with check-ins
 - [ ] M11: operating other apps through Accessibility
