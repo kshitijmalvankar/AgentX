@@ -82,7 +82,7 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     }
 
     public static var fileURL: URL {
-        URL(fileURLWithPath: realHome).appendingPathComponent("Library/Application Support/AgentX/widget-snapshot.json")
+        SharedChannel.dataDirectory.appendingPathComponent("widget-snapshot.json")
     }
 
     public static func load(from url: URL = fileURL) -> WidgetSnapshot? {

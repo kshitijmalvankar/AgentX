@@ -5,10 +5,11 @@
 	<!-- Widget extensions must be sandboxed. -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<!-- Read-only access to the snapshot AgentX writes (no App Group or paid team needed). -->
+	<!-- Read-only access to the snapshot AgentX (or AgentX Dev) writes, and its route token
+	     for Control Center buttons. No App Group or paid team needed. -->
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
-		<string>/Library/Application Support/AgentX/</string>
+		<string>/Library/Application Support/$(AGENTX_PRODUCT_NAME)/</string>
 	</array>
 </dict>
 </plist>

@@ -1,6 +1,7 @@
-// AgentX desktop widgets. They read the snapshot AgentX writes to
-// ~/Library/Application Support/AgentX/widget-snapshot.json (every 15
-// minutes, and after important changes) and never talk to Claude or GitHub.
+// AgentX desktop widgets. They read the snapshot
+// AgentX writes to ~/Library/Application Support/AgentX/widget-snapshot.json
+// ("AgentX Dev" for the Dev app) every 15 minutes and after important changes,
+// and never talk to Claude or GitHub.
 import AgentXShared
 import SwiftUI
 import WidgetKit
@@ -44,7 +45,7 @@ struct ClaudeWidget: Widget {
         StaticConfiguration(kind: "ClaudeWidget", provider: SnapshotProvider()) { entry in
             ClaudeWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: "agentx://dashboard"))
+                .widgetURL(SharedChannel.url("dashboard"))
         }
         .configurationDisplayName("Claude")
         .description("Your plan usage, what Claude is working on, and approvals waiting for you.")
@@ -138,7 +139,7 @@ struct VitalsWidget: Widget {
         StaticConfiguration(kind: "VitalsWidget", provider: SnapshotProvider()) { entry in
             VitalsWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: "agentx://system"))
+                .widgetURL(SharedChannel.url("system"))
         }
         .configurationDisplayName("Mac Vitals")
         .description("CPU, memory, battery and disk, from AgentX.")
@@ -198,7 +199,7 @@ struct GitHubWidget: Widget {
         StaticConfiguration(kind: "GitHubWidget", provider: SnapshotProvider()) { entry in
             GitHubWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: "agentx://github"))
+                .widgetURL(SharedChannel.url("github"))
         }
         .configurationDisplayName("GitHub Activity")
         .description("Your contribution calendar and streak.")
