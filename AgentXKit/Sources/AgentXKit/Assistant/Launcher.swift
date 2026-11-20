@@ -183,14 +183,39 @@ final class LauncherController {
     /// brings AgentX forward, which would take the keyboard from the launcher: once that has
     /// happened, hand the screen back to the app you were in, then open over it like ⌥Space.
     func showFromLink(prefill: String?) {
-        Task {
+        Task { await showOverYourApp(prefill: prefill) }
+    }
+
+    private func showOverYourApp(prefill: String?) async {
+        try? await Task.sleep(for: .milliseconds(150))
+        if let app = FrontmostTracker.shared.appToReturnTo() {
+            NSApp.yieldActivation(to: app)
+            app.activate()
             try? await Task.sleep(for: .milliseconds(150))
-            if let app = FrontmostTracker.shared.appToReturnTo() {
-                NSApp.yieldActivation(to: app)
-                app.activate()
-                try? await Task.sleep(for: .milliseconds(150))
-            }
-            show(prefill: prefill)
+        }
+        show(prefill: prefill)
+    }
+
+    /// Siri, Shortcuts and Spotlight's "Ask AgentX": open with the request and do it as if
+    /// you'd pressed Return (on this Mac when it can be, Claude when it needs to be).
+    func run(_ request: String) {
+        let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            await showOverYourApp(prefill: request)
+            guard !request.isEmpty else { return }
+            updateResults()
+            // A moment for file results; stop if you've started typing something else.
+            try? await Task.sleep(for: .milliseconds(400))
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines) == request else { return }
+            returnPressed()
+        }
+    }
+
+    /// Open on a conversation (one Siri or a Shortcut started that's still going).
+    func showConversation(_ id: String) {
+        Task {
+            await showOverYourApp(prefill: nil)
+            conversationID = id
         }
     }
 

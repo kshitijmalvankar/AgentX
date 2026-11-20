@@ -103,7 +103,7 @@ public final class AppModel {
     /// Show the sign-in terminal sheet.
     public var showLogin = false
 
-    @ObservationIgnored private var bootstrapped = false
+    @ObservationIgnored private var bootstrapTask: Task<Void, Never>?
     /// Finishes once the engine binary is verified and agent-core has the security settings.
     @ObservationIgnored private var securityReady: Task<Void, Never>?
     /// Keeps the desktop widgets' data fresh.
@@ -175,13 +175,21 @@ public final class AppModel {
         }
         usage.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
         github.onUpdate = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
-        automations.onChange = { [weak self] in self?.widgetWriter?.setNeedsWrite() }
+        automations.onChange = { [weak self] in
+            self?.widgetWriter?.setNeedsWrite()
+            AgentXActions.automationsChanged?()
+        }
     }
 
     /// Start the agent engine and load everything. Safe to call more than once.
+    /// Start everything once. Every caller waits until it's done (Siri or Shortcuts
+    /// can launch AgentX just to run something).
     public func bootstrap() async {
-        guard !bootstrapped else { return }
-        bootstrapped = true
+        if bootstrapTask == nil { bootstrapTask = Task { await startUp() } }
+        await bootstrapTask?.value
+    }
+
+    private func startUp() async {
         NotificationManager.shared.configure(store: sessions)
         AssistantWorkspace.prepare()
         memory.startWatching()
