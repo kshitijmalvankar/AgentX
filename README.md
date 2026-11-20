@@ -158,6 +158,19 @@ When you press ⌥Space, AgentX looks at the app you were using: its window or d
 - **Claude points at things:** ask "where's the export button?" and AgentX moves a pointer onto it and rings it (`screen_point`). It finds things by their label through Accessibility, or by a spot in a picture of the window for web pages. It never clicks.
 - **Settings → Assistant → Launcher and pointer** sets where the launcher opens (the middle of the screen or next to the pointer) and turns each of these on or off.
 
+### Reach it from anywhere
+
+- **Siri, Shortcuts and Spotlight:** AgentX's actions are in the Shortcuts app and in Spotlight, and Siri knows these phrases: "Ask AgentX", "Run Morning brief in AgentX" (any automation), "Ask Claude in AgentX", "Open AgentX", "Stop everything in AgentX".
+  - **Ask AgentX** does a request as if you'd typed it in the launcher and pressed Return: on your Mac when it can, Claude when it needs to.
+  - **Get an Answer from Claude** returns the answer as text, for Shortcuts that use it. Text from a Shortcut counts as untrusted, so sending data out asks first.
+  - The others: **Open the AgentX Launcher**, **Run Automation**, **Start a Coding Session**, **Open AgentX** and **Stop Everything**.
+- **Right-click → Services** in any app:
+  - **Ask AgentX** opens the launcher with the selected text and the quick actions.
+  - **Summarize with AgentX** summarizes on your Mac.
+  - **Ask AgentX About These Files** works in Finder.
+- **Control Center** (Edit Controls → AgentX): **Ask AgentX**, **Run Automation** (you pick which), **Approvals** (how many are waiting) and **Stop Everything**. They can go in the menu bar too.
+- **Links:** `agentx://launcher?q=…` opens the launcher over the app you're in, with the text typed in (never sent). Links that do something (`agentx://run/<id>`, `agentx://stop`) need AgentX's secret token, which only its own widgets and controls have.
+
 ### iPhone companion
 
 The AgentX iPhone app watches and controls your Mac:
@@ -187,7 +200,7 @@ AgentX shows your Claude plan's usage (the 5-hour session window, the weekly lim
 | Mac Vitals | CPU, memory, disk and battery |
 | GitHub Activity | Your contribution calendar and streak |
 
-The widgets read a snapshot that AgentX writes to `~/Library/Application Support/AgentX/widget-snapshot.json` every 15 minutes and after important changes. The sandboxed extension can only read that folder. Clicking a widget opens the matching section (`agentx://dashboard`, `agentx://system`, `agentx://github`).
+The widgets read a snapshot that AgentX writes to `~/Library/Application Support/AgentX/widget-snapshot.json` every 15 minutes and after important changes. The sandboxed extension can only read that folder. Clicking a widget opens the matching section (`agentx://dashboard`, `agentx://system`, `agentx://github`). AgentX Dev's widgets and controls use its own folder and `agentx-dev://`.
 
 ### Automations
 
@@ -262,7 +275,7 @@ node agent-core/scripts/smoke.ts   # read-only check against the real SDK, no qu
 - [x] One Chats section: Mac conversations and claude.ai side by side, with hand-off both ways
 - [x] iPhone companion: monitor, approve with Face ID, Stop Everything, message Claude on your Mac (encrypted link, QR pairing)
 - [x] M7: memory (Settings → Memory) and context (what's on screen, selection, browser tab, Look at Window)
-- [ ] M8: Siri, Shortcuts, Spotlight, right-click, voice, Control Center
+- [x] M8: Siri, Shortcuts, Spotlight, right-click Services, voice, Control Center
 - [ ] M9: proactive triggers (files, calendar, apps, battery, mail, GitHub)
 - [ ] M10: long-running tasks with check-ins
 - [ ] M11: operating other apps through Accessibility
