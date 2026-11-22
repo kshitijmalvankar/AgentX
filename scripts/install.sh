@@ -126,7 +126,10 @@ ARCH="$(uname -m)"; [ "$ARCH" = "x86_64" ] && ARCH="x64"
 ENGINE="$STAGE/node_modules/@anthropic-ai/claude-agent-sdk-darwin-$ARCH/claude"
 [ -x "$ENGINE" ] || fail "The Claude Code engine binary is missing from agent-core ($ENGINE)."
 codesign --verify --strict "$ENGINE" || fail "The Claude Code engine's signature is invalid."
-codesign -dv "$ENGINE" 2>&1 | grep -q "TeamIdentifier=$ANTHROPIC_TEAM" || fail "The Claude Code engine isn't signed by Anthropic."
+# Read codesign's output first: piping it into `grep -q` under pipefail fails at random
+# (grep stops reading at the match, and codesign dies writing the rest).
+SIGNED_BY="$(codesign -dv "$ENGINE" 2>&1)"
+[[ "$SIGNED_BY" == *"TeamIdentifier=$ANTHROPIC_TEAM"* ]] || fail "The Claude Code engine isn't signed by Anthropic."
 say "Claude Code engine signed by Anthropic ($ANTHROPIC_TEAM)"
 
 # 4. Build Release with the stable channel settings.
