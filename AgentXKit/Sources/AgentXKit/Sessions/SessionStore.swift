@@ -466,9 +466,16 @@ public final class SessionStore {
     }
 
     public func setPermissionMode(_ mode: PermissionModeOption, for c: Conversation) async {
+        let before = c.permissionMode
         c.permissionMode = mode
         guard let handle = c.liveHandle else { return }
-        do { try await client.call("session.setPermissionMode", ["handle": .string(handle), "mode": .string(mode.rawValue)]) } catch { c.error = error.localizedDescription }
+        do {
+            try await client.call("session.setPermissionMode", ["handle": .string(handle), "mode": .string(mode.rawValue)])
+        } catch {
+            // Not taken (Auto isn't available everywhere): show the mode it's really in.
+            c.permissionMode = before
+            c.error = "Couldn't switch to \(mode.shortLabel): \(error.localizedDescription)"
+        }
     }
 
     // MARK: Approvals
@@ -590,7 +597,14 @@ public final class SessionStore {
             guard let c = conversation(forHandle: handle) else { return }
             c.sessionId = params["sessionId"]?.string ?? c.sessionId
             c.model = params["model"]?.string ?? c.model
+            if let mode = params["permissionMode"]?.string.flatMap(PermissionModeOption.init) { c.permissionMode = mode }
             onSessionStarted?(c)
+
+        case "session.mode":
+            // Claude Code changed the mode itself (out of plan mode once you approve the plan).
+            guard let c = conversation(forHandle: handle),
+                  let mode = params["permissionMode"]?.string.flatMap(PermissionModeOption.init) else { return }
+            c.permissionMode = mode
 
         case "session.state":
             guard let c = conversation(forHandle: handle), let state = params["state"]?.string.flatMap(LiveState.init) else { return }

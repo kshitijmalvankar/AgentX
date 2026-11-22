@@ -257,6 +257,9 @@ class LiveSession {
     if (message.type === "system" && message.subtype === "init") {
       this.sessionId = message.session_id;
       notify("session.started", { handle: this.handle, sessionId: message.session_id, model: message.model, permissionMode: message.permissionMode });
+    } else if (message.type === "system" && message.subtype === "status" && message.permissionMode) {
+      // The mode changed inside Claude Code (leaving plan mode after you approve a plan, say).
+      notify("session.mode", { handle: this.handle, permissionMode: message.permissionMode });
     } else if (message.type === "result") {
       this.setState("idle");
     }

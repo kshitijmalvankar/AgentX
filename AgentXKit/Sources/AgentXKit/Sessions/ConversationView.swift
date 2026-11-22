@@ -29,7 +29,9 @@ struct ConversationView: View {
                 } else {
                     Composer(text: $draft, isWorking: conversation.isWorking,
                              send: { text in Task { await store.send(text, in: conversation) } },
-                             stop: { Task { await store.interrupt(conversation) } })
+                             stop: { Task { await store.interrupt(conversation) } }) {
+                        SessionControls(conversation: conversation)
+                    }
                 }
             case .terminal:
                 TerminalTab(conversation: conversation, startPhoneSync: startPhoneSync)
@@ -82,27 +84,6 @@ struct ConversationView: View {
             .fixedSize()
 
             Menu {
-                Menu("Model: \(modelLabel)") {
-                    Button { Task { await store.setModel(nil, for: conversation) } } label: {
-                        checked(conversation.model == nil, "Default")
-                    }
-                    ForEach(model.models) { m in
-                        Button { Task { await store.setModel(m.value, for: conversation) } } label: {
-                            checked(conversation.model == m.value, m.displayName)
-                        }
-                    }
-                }
-                // Coding permission modes (plan, accept edits…) don't apply to Mac conversations.
-                if conversation.kind == .coding {
-                    Menu("Permissions: \(conversation.permissionMode.shortLabel)") {
-                        ForEach(PermissionModeOption.allCases) { mode in
-                            Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
-                                checked(mode == conversation.permissionMode, mode.label)
-                            }
-                        }
-                    }
-                }
-                Divider()
                 if conversation.kind == .assistant {
                     Button("Continue in claude.ai", systemImage: "cloud") { model.continueInClaudeAI(conversation) }
                         .help("Copy this conversation and open a new claude.ai chat to paste it into (claude.ai can't act on your Mac).")
@@ -125,7 +106,7 @@ struct ConversationView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Model, permissions, phone sync, end session")
+            .help("Phone sync, end session and more")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -440,14 +421,29 @@ private struct ResultFooter: View {
 
 // MARK: - Composer
 
-struct Composer: View {
+struct Composer<Controls: View>: View {
     @Binding var text: String
     let isWorking: Bool
     let send: (String) -> Void
     let stop: () -> Void
+    /// A row under the field (the model and mode menus for sessions).
+    @ViewBuilder var controls: Controls
     @FocusState private var focused: Bool
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            field
+            controls
+                .padding(.leading, 6)
+        }
+        .readingColumn()
+        .padding(.horizontal, 28)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .onAppear { focused = true }
+    }
+
+    private var field: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(isWorking ? "Send a follow-up…" : "Message Claude", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -472,11 +468,6 @@ struct Composer: View {
                 .controlSize(.large)
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .readingColumn()
-        .padding(.horizontal, 28)
-        .padding(.top, 8)
-        .padding(.bottom, 16)
-        .onAppear { focused = true }
     }
 
     private func submit() {
@@ -484,6 +475,69 @@ struct Composer: View {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         text = ""
         send(value)
+    }
+}
+
+extension Composer where Controls == EmptyView {
+    init(text: Binding<String>, isWorking: Bool, send: @escaping (String) -> Void, stop: @escaping () -> Void) {
+        self.init(text: text, isWorking: isWorking, send: send, stop: stop) { EmptyView() }
+    }
+}
+
+/// The model, and for coding sessions the permission mode, under the message field.
+/// Changes apply to the running session right away, or to the next message.
+struct SessionControls: View {
+    @Environment(AppModel.self) private var model
+    let conversation: Conversation
+
+    private var store: SessionStore { model.sessions }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Menu {
+                Button { Task { await store.setModel(nil, for: conversation) } } label: {
+                    checked(conversation.model == nil, "Default")
+                }
+                ForEach(model.models) { m in
+                    Button { Task { await store.setModel(m.value, for: conversation) } } label: {
+                        checked(conversation.model == m.value, m.displayName)
+                    }
+                }
+            } label: {
+                Label(modelLabel, systemImage: "cpu")
+            }
+            .help("Model for this session")
+
+            // Permission modes are for coding sessions; Mac conversations follow AgentX's own rules.
+            if conversation.kind == .coding {
+                Menu {
+                    ForEach(PermissionModeOption.allCases) { mode in
+                        Button { Task { await store.setPermissionMode(mode, for: conversation) } } label: {
+                            checked(conversation.permissionMode == mode, mode.label)
+                        }
+                    }
+                } label: {
+                    Label(conversation.permissionMode.shortLabel, systemImage: conversation.permissionMode.symbol)
+                }
+                .help("What Claude may do without asking: \(conversation.permissionMode.label)")
+            }
+            Spacer()
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize(horizontal: false, vertical: true)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .labelStyle(.titleAndIcon)
+    }
+
+    private var modelLabel: String {
+        guard let m = conversation.model else { return "Default model" }
+        return model.models.first(where: { $0.value == m || m.hasPrefix($0.value) })?.displayName ?? m
+    }
+
+    @ViewBuilder private func checked(_ on: Bool, _ title: String) -> some View {
+        if on { Label(title, systemImage: "checkmark") } else { Text(title) }
     }
 }
 

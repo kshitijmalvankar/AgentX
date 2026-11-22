@@ -39,8 +39,14 @@ struct SessionRegistryTests {
     }
 }
 
-@Suite("Other apps with a session open")
-struct OtherAppsTests {
+@Suite("Session modes and other apps")
+struct SessionModeTests {
+    @Test func modesIncludeAutoButNeverBypass() {
+        #expect(PermissionModeOption.allCases.map(\.rawValue) == ["default", "acceptEdits", "plan", "auto"])
+        #expect(PermissionModeOption(rawValue: "bypassPermissions") == nil, "skipping every check isn't offered")
+        #expect(PermissionModeOption.auto.shortLabel == "Auto")
+    }
+
     @Test func agentXProcessesAreNamed() {
         #expect(SessionRegistry.appName(ofPath: "/Users/me/Projects/AgentX/build/AgentX Dev.app/Contents/MacOS/AgentX Dev") == "AgentX Dev")
         #expect(SessionRegistry.appName(ofPath: "/Applications/AgentX.app/Contents/MacOS/AgentX") == "AgentX")

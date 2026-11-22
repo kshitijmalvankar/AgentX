@@ -88,23 +88,34 @@ public enum LiveState: String, Sendable {
     }
 }
 
-/// Permission modes Claude Code supports (a subset we expose in the UI).
+/// Claude Code's permission modes for coding sessions. "Bypass permissions"
+/// (skip every check) and "don't ask" are left out on purpose.
 public enum PermissionModeOption: String, CaseIterable, Identifiable, Sendable {
-    case `default`, acceptEdits, plan
+    case `default`, acceptEdits, plan, auto
 
     public var id: String { rawValue }
     public var shortLabel: String {
         switch self {
-        case .default: "Ask first"
-        case .acceptEdits: "Auto-accept edits"
-        case .plan: "Plan only"
+        case .default: "Ask"
+        case .acceptEdits: "Accept edits"
+        case .plan: "Plan"
+        case .auto: "Auto"
         }
     }
     public var label: String {
         switch self {
-        case .default: "Ask before risky actions"
-        case .acceptEdits: "Auto-accept file edits"
+        case .default: "Ask before edits and commands"
+        case .acceptEdits: "Accept file edits, ask for commands"
         case .plan: "Plan only (no changes)"
+        case .auto: "Auto (Claude approves safe steps, asks about the rest)"
+        }
+    }
+    public var symbol: String {
+        switch self {
+        case .default: "hand.raised"
+        case .acceptEdits: "pencil.line"
+        case .plan: "list.bullet.clipboard"
+        case .auto: "wand.and.sparkles"
         }
     }
 }
