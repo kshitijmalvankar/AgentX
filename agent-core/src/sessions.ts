@@ -56,6 +56,15 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp
 const MAX_IMAGE_BASE64 = 8 * 1024 * 1024;
 
 /** A user message's content: images first, then the text. */
+/**
+ * The app sends JSON null for options it leaves unset. The SDK fills in its
+ * defaults only for missing ones (`allowedTools = []`), so a null reached
+ * `allowedTools.filter` and every coding session failed to start. Drop them.
+ */
+export function withoutNulls<T extends object>(params: T): T {
+  return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== null)) as T;
+}
+
 export function userContent(text: string, images: ImageInput[] = []): string | unknown[] {
   if (images.length === 0) return text;
   if (images.length > 4) throw new Error("At most 4 images per message.");
@@ -495,7 +504,8 @@ export function registerSessionHandlers(): void {
     getSessionMessages(p.sessionId, { dir: p.dir, limit: p.limit, offset: p.offset }),
   );
 
-  handle("session.start", (p: StartParams) => {
+  handle("session.start", (raw: StartParams) => {
+    const p = withoutNulls(raw);
     if (!p.cwd) throw new Error("A working folder is required.");
     const s = new LiveSession(p);
     live.set(s.handle, s);
