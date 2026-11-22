@@ -31,7 +31,13 @@ struct WidgetSnapshotTests {
     }
 
     @Test func composesFromAnEmptyApp() {
-        let snapshot = WidgetSnapshotWriter.compose(model: AppModel(), system: nil)
+        // Its own folders, so the test never touches AgentX Dev's real automations or activity log.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agentx-widget-\(UUID().uuidString)")
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        let model = AppModel(activity: ActivityLog(fileURL: dir.appendingPathComponent("activity.jsonl")),
+                             automations: AutomationCenter(directory: dir, defaults: scratch.defaults))
+        let snapshot = WidgetSnapshotWriter.compose(model: model, system: nil)
         #expect(snapshot.runningSessions == 0 && snapshot.waitingApprovals == 0)
         #expect(snapshot.github == nil && snapshot.vitals == nil)
     }

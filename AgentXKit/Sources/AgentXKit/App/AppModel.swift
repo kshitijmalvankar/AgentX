@@ -70,7 +70,7 @@ public final class AppModel {
     /// Your GitHub profile, contributions and repos (through the gh CLI).
     public let github = GitHubStore()
     /// Scheduled Claude tasks.
-    public let automations = AutomationCenter()
+    public let automations: AutomationCenter
     /// Starts automations when something happens (a file, a meeting, a pull request…).
     let triggers = TriggerEngine()
     /// Your Claude plan's usage (session and weekly limits).
@@ -119,10 +119,11 @@ public final class AppModel {
         NSApp.activate()
     }
 
-    /// Tests pass their own activity log and phone link (temporary files, no Keychain).
-    init(activity: ActivityLog = ActivityLog(), phone: PhoneLink = PhoneLink()) {
+    /// Tests pass their own activity log, phone link and automations (temporary files, no Keychain).
+    init(activity: ActivityLog = ActivityLog(), phone: PhoneLink = PhoneLink(), automations: AutomationCenter = AutomationCenter()) {
         self.activity = activity
         self.phone = phone
+        self.automations = automations
         sessions = SessionStore(client: client)
         usage = UsageStore(client: client)
         client.notificationHandler = { [weak self] method, params in

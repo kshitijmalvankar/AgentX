@@ -33,7 +33,8 @@ struct PhoneLinkTests {
     func makeLink() -> (PhoneLink, AppModel) {
         let link = PhoneLink(keys: keys, defaults: scratch.defaults, file: dir.appendingPathComponent("phone-devices.json"),
                              preferredPort: testListenerPort(), advertise: false)
-        let model = AppModel(activity: ActivityLog(fileURL: dir.appendingPathComponent("activity.jsonl")), phone: link)
+        let model = AppModel(activity: ActivityLog(fileURL: dir.appendingPathComponent("activity.jsonl")), phone: link,
+                             automations: AutomationCenter(directory: dir, defaults: scratch.defaults))
         link.attach(model)
         return (link, model)
     }
