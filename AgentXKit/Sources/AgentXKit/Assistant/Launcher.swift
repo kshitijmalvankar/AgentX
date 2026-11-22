@@ -70,6 +70,8 @@ final class LauncherController {
     @ObservationIgnored private var keyIsDown = false
     @ObservationIgnored private var holdTask: Task<Void, Never>?
     @ObservationIgnored private var speakTask: Task<Void, Never>?
+    /// A request from Siri, Shortcuts or Spotlight (see run(_:)): if it goes to Claude, it counts as outside text.
+    @ObservationIgnored private var outsideRequest: String?
 
     enum Anchor { case automatic, center, point(NSPoint) }
 
@@ -151,6 +153,7 @@ final class LauncherController {
             error = nil
             local = nil
             query = ""
+            outsideRequest = nil
             openedOver = NSWorkspace.shared.frontmostApplication
             AppIndex.shared.refreshIfNeeded()
             LocalCommands.shared.prewarm()
@@ -198,6 +201,9 @@ final class LauncherController {
 
     /// Siri, Shortcuts and Spotlight's "Ask AgentX": open with the request and do it as if
     /// you'd pressed Return (on this Mac when it can be, Claude when it needs to be).
+    /// The text may come from anywhere a Shortcut gets it, so only rows that are safe to
+    /// run unseen run by themselves (quitting an app or opening a web page waits for you),
+    /// and Claude gets it as outside text: sending anything out asks first.
     func run(_ request: String) {
         let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
@@ -207,6 +213,8 @@ final class LauncherController {
             // A moment for file results; stop if you've started typing something else.
             try? await Task.sleep(for: .milliseconds(400))
             guard query.trimmingCharacters(in: .whitespacesAndNewlines) == request else { return }
+            if results.indices.contains(selectedResult), !Self.runsByItself(results[selectedResult].action) { return }
+            outsideRequest = request
             returnPressed()
         }
     }
@@ -329,13 +337,14 @@ final class LauncherController {
         }
         // Add the screen context you kept (used once, for this message).
         var prompt = text
-        var taint: String?
+        var taint: String? = outsideRequest == text ? "a request passed in from Siri, Shortcuts or Spotlight" : nil
+        outsideRequest = nil
         var images: [JSONValue] = []
         // Only when the words are about the screen, you came from the Ask button, or
         // you clicked Include This: "what's my latest email?" goes without a window title.
         if wantsScreen(for: text), let shared = sharedContext {
             prompt = shared.promptBlock() + "\n\n" + text
-            taint = shared.taintReason
+            taint = taint ?? shared.taintReason
             replaceTarget = shared.selectedText != nil ? contextApp : nil
         }
         if let picture {

@@ -289,6 +289,19 @@ extension LauncherController {
         submit(text)
     }
 
+    /// Whether a row may run without you seeing it first (Siri, Shortcuts and Spotlight's
+    /// "Ask AgentX"): opening apps, files and Settings, showing things, and asking (Claude
+    /// gets it as outside text; commands that create or send still wait for your OK).
+    /// Quitting an app, opening a web page and starting a coding session wait for you.
+    nonisolated static func runsByItself(_ action: LauncherResult.Action) -> Bool {
+        switch action {
+        case .open(let url): url.isFileURL || url.scheme == "x-apple.systempreferences"
+        case .copy, .doOnMac, .askClaude, .aboutSelection, .aboutScreen: true
+        case .local(let plan): !plan.needsConfirmation
+        case .tool, .code: false
+        }
+    }
+
     func perform(_ result: LauncherResult) {
         switch result.action {
         case .open(let url):
