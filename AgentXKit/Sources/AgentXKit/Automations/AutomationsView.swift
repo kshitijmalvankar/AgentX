@@ -137,6 +137,11 @@ private struct AutomationCard: View {
                         Label(automation.whenLabel, systemImage: automation.trigger?.symbol ?? "clock")
                         Text("·")
                         Text(automation.kindLabel)
+                        if automation.checksOnMacFirst {
+                            Text("·")
+                            Label("Checked on this Mac first", systemImage: "sparkles")
+                                .help(automation.condition.map { "Claude runs only when \($0)" } ?? "Claude runs only when the task has something to do")
+                        }
                     }
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -270,10 +275,15 @@ private struct AutomationEditor: View {
     @State private var app: (id: String, name: String)?
     @State private var batteryPercent = 20
     @State private var sender = ""
+    @State private var checkFirst: Bool
+    @State private var condition: String
 
     init(original: Automation) {
         self.original = original
         _draft = State(initialValue: original)
+        // On for new automations; existing ones keep what they had.
+        _checkFirst = State(initialValue: original.checkFirst ?? (original.name.isEmpty && original.prompt.isEmpty))
+        _condition = State(initialValue: original.condition ?? "")
         switch original.trigger {
         case nil: break
         case .fileAdded(let f, let p):
@@ -414,6 +424,10 @@ private struct AutomationEditor: View {
         draft.schedule = everyHours ? .interval(hours: hours)
             : .daily(hour: parts.hour ?? 9, minute: parts.minute ?? 0, weekdays: weekdays)
         draft.trigger = trigger
+        let checks = trigger != nil && (draft.kind == .assistant || draft.kind == .coding)
+        draft.checkFirst = checks ? checkFirst : nil
+        let wanted = condition.trimmingCharacters(in: .whitespacesAndNewlines)
+        draft.condition = checks && checkFirst && !wanted.isEmpty ? wanted : nil
         draft.allowedTools = allowedText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if draft.kind != .coding { draft.folder = nil; draft.allowedTools = [] }
         if isNew { model.automations.add(draft) } else { model.automations.update(draft) }
@@ -479,6 +493,14 @@ extension AutomationEditor {
             note("Checked every few minutes through GitHub (the gh command line tool, signed in).")
         }
         if draft.kind == .assistant || draft.kind == .coding {
+            Toggle("Check on this Mac first", isOn: $checkFirst)
+            if checkFirst {
+                TextField("Only run Claude when", text: $condition,
+                          prompt: Text("e.g. the email asks me to do something"))
+                note(LocalCommands.shared.isAvailable
+                     ? "Apple Intelligence reads what happened, on this Mac, and starts Claude only when it fits (with nothing here: when the task has something to do). It's free, and the events it turns down don't count toward the limits."
+                     : "Apple Intelligence isn't available on this Mac, so Claude runs every time.")
+            }
             note("Claude gets what happened (a file name, an event title, a mail subject…) as outside data it won't take instructions from. Sending anything out asks you first.")
         }
     }

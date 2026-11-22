@@ -37,6 +37,7 @@ public final class AutomationCenter {
     }
     static let pausedKey = "automationsPaused"
     static let triggeredStartersKey = "triggeredStartersAdded"
+    static let checkFirstStartersKey = "checkFirstStartersUpdated"
 
     /// The check on this Mac before a triggered Claude run (tests put in their own).
     @ObservationIgnored var checkOnMac: @MainActor (Automation, TriggerEvent) async -> TriggerCheck.Verdict? = { automation, event in
@@ -75,6 +76,18 @@ public final class AutomationCenter {
             let names = Set(automations.map(\.name))
             automations += AutomationTemplates.triggered.filter { !names.contains($0.name) }
             defaults.set(true, forKey: Self.triggeredStartersKey)
+            save()
+        }
+        // Starters added before "Check on this Mac first" get it, if you haven't changed them.
+        if !defaults.bool(forKey: Self.checkFirstStartersKey), storageError == nil {
+            for template in AutomationTemplates.triggered where template.checkFirst != nil {
+                for i in automations.indices where automations[i].name == template.name && automations[i].prompt == template.prompt
+                    && automations[i].trigger == template.trigger && automations[i].checkFirst == nil {
+                    automations[i].checkFirst = template.checkFirst
+                    automations[i].condition = template.condition
+                }
+            }
+            defaults.set(true, forKey: Self.checkFirstStartersKey)
             save()
         }
         if let data = try? Data(contentsOf: runsFile), let saved = try? decoder.decode([AutomationRun].self, from: data) {

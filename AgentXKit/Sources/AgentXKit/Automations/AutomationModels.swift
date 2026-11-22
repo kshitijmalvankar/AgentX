@@ -199,12 +199,14 @@ enum AutomationTemplates {
             name: "Meeting prep",
             prompt: "A meeting starts soon (details below). Look for related notes, recent emails with the people in it, and files that mention it. Give me a short prep: what it's about, what's still open, and anything I should bring up.",
             kind: .assistant, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
-            trigger: .calendarEventSoon(minutesBefore: 10, titleContains: nil), enabled: false),
+            trigger: .calendarEventSoon(minutesBefore: 10, titleContains: nil), checkFirst: true,
+            condition: "it's a meeting with other people, not a reminder, focus time or a holiday", enabled: false),
         Automation(
             name: "Downloads sorter",
             prompt: "A new file arrived in Downloads (below). In one or two lines, suggest where it belongs and why. Only if a folder clearly fits, move it with files_move, so I can approve the move.",
             kind: .assistant, folder: nil, schedule: .daily(hour: 9, minute: 0, weekdays: []),
-            trigger: .fileAdded(folder: NSHomeDirectory() + "/Downloads", pattern: nil), enabled: false),
+            trigger: .fileAdded(folder: NSHomeDirectory() + "/Downloads", pattern: nil), checkFirst: true,
+            condition: "it looks like a document, picture or installer worth filing", enabled: false),
         Automation(
             name: "PR review nudge",
             prompt: "Someone is waiting for your review.",

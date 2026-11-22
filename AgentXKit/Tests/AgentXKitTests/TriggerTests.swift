@@ -345,6 +345,28 @@ struct TriggerCheckTests {
         try await Task.sleep(for: .milliseconds(100))
         #expect(check.asked == 0 && center.runs.isEmpty)
     }
+
+    @Test func untouchedStartersGetTheCheck() throws {
+        let dir = tempDir()
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        // Starters saved before the check existed: one as it came, one you changed.
+        var starters = AutomationTemplates.all + AutomationTemplates.triggered
+        for i in starters.indices { starters[i].checkFirst = nil; starters[i].condition = nil }
+        let sorterIndex = starters.firstIndex { $0.name == "Downloads sorter" }!
+        starters[sorterIndex].prompt = "My own words."
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(starters).write(to: dir.appendingPathComponent("automations.json"))
+        scratch.defaults.set(true, forKey: AutomationCenter.triggeredStartersKey)
+
+        let center = AutomationCenter(directory: dir, defaults: scratch.defaults, pausedByDefault: false)
+        let prep = try #require(center.automations.first { $0.name == "Meeting prep" })
+        #expect(prep.checkFirst == true && prep.condition?.contains("meeting with other people") == true)
+        let sorter = try #require(center.automations.first { $0.name == "Downloads sorter" })
+        #expect(sorter.checkFirst == nil, "you changed it, so it's left alone")
+    }
 }
 
 /// The real on-device model (Apple Intelligence). Off by default: AGENTX_LIVE_MODEL=1 swift test --filter LiveTriggerCheck

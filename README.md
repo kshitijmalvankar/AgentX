@@ -219,6 +219,8 @@ The widgets read a snapshot that AgentX writes to `~/Library/Application Support
 - unread mail arrives in Mail from someone (checked every 5 minutes while Mail is open)
 - your review is requested on GitHub, or checks fail on your pull request
 
+**Check on this Mac first** (on for new triggered Claude automations): before Claude starts, Apple Intelligence reads what happened, on your Mac, and starts Claude only when it fits your condition ("Only run Claude when the email asks me to do something"), or, with no condition, when the task has something to do. It's free, nothing leaves the Mac, and events it turns down don't count toward the limits; the run history counts them in one entry a day ("3 events today didn't need Claude"). Without Apple Intelligence, Claude runs every time.
+
 Each watcher runs only while an enabled automation needs it. Each happening fires once. An automation runs at most once every 10 minutes, and triggers start at most 20 runs a day. What set a run off (a file name, an event title, a mail subject) reaches Claude as outside data it won't take instructions from, and sending anything out asks you first.
 
 Eight starters come turned off:
@@ -228,8 +230,8 @@ Eight starters come turned off:
 | Morning brief | Weekdays 8:00 | Today's calendar, reminders and unread mail |
 | Repo check | Daily 18:00 | Uses `repos_status` to list local repos with uncommitted or unpushed work |
 | Tidy Downloads | Sundays 10:00 | Proposes moves, and each one needs your OK |
-| Meeting prep | 10 minutes before an event | Claude prepares you from related mail, notes and files |
-| Downloads sorter | A file lands in Downloads | Claude suggests where it goes; moving it asks first |
+| Meeting prep | 10 minutes before an event with other people (checked on your Mac) | Claude prepares you from related mail, notes and files |
+| Downloads sorter | A document, picture or installer lands in Downloads (checked on your Mac) | Claude suggests where it goes; moving it asks first |
 | PR review nudge | Your review is requested | A notification |
 | Low battery | Below 20% on battery | A notification |
 | Welcome back | First unlock of the day | A briefing written on your Mac |
