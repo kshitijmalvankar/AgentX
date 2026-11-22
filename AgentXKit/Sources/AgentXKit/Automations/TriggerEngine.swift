@@ -145,13 +145,25 @@ struct TriggerGate: Codable, Equatable {
     private(set) var firedAt: [Date] = []
 
     mutating func decide(_ automation: UUID, key: String, paused: Bool, now: Date = Date()) -> Decision {
-        seen = seen.filter { now.timeIntervalSince($0.value) < 7 * 86_400 }
-        firedAt = firedAt.filter { now.timeIntervalSince($0) < 86_400 }
-        let seenKey = "\(automation.uuidString)|\(key)"
-        if seen[seenKey] != nil { return .duplicate }
-        // Every happening counts as seen, even one that's skipped: it never fires later.
-        seen[seenKey] = now
+        guard markSeen(automation, key: key, now: now) else { return .duplicate }
         if paused { return .paused }
+        return admit(automation, now: now)
+    }
+
+    /// Whether this automation sees this happening for the first time. It counts as seen
+    /// either way, even if it's then skipped: it never fires later.
+    mutating func markSeen(_ automation: UUID, key: String, now: Date = Date()) -> Bool {
+        seen = seen.filter { now.timeIntervalSince($0.value) < 7 * 86_400 }
+        let seenKey = "\(automation.uuidString)|\(key)"
+        if seen[seenKey] != nil { return false }
+        seen[seenKey] = now
+        return true
+    }
+
+    /// Whether a run may start now (the cooldown and the daily cap); counts it if so.
+    /// Events the check on this Mac turns down never get here, so they don't count.
+    mutating func admit(_ automation: UUID, now: Date = Date()) -> Decision {
+        firedAt = firedAt.filter { now.timeIntervalSince($0) < 86_400 }
         if let last = lastFired[automation], now.timeIntervalSince(last) < Self.cooldown { return .coolingDown }
         if firedAt.count >= Self.dailyLimit { return .dailyLimit }
         lastFired[automation] = now
@@ -194,6 +206,8 @@ final class TriggerEngine {
     private var battery = BatteryWatch()
     /// When the daily limit was last noted in each automation's history.
     private var limitNoted: [UUID: Date] = [:]
+    /// The check on this Mac in progress for each automation (events are checked one at a time).
+    private var checks: [UUID: Task<Void, Never>] = [:]
     private let stateFile: URL
 
     init(stateFile: URL = AppChannel.current.dataFile("trigger-state.json")) {
@@ -276,8 +290,27 @@ final class TriggerEngine {
     }
 
     private func consider(_ automation: Automation, _ event: TriggerEvent, now: Date) {
-        guard let center else { return }
-        let decision = gate.decide(automation.id, key: event.key, paused: center.isPaused, now: now)
+        guard let center, gate.markSeen(automation.id, key: event.key, now: now) else { return }
+        save()
+        guard !center.isPaused else { return }
+        guard automation.checksOnMacFirst else { admit(automation, event, now: now); return }
+        // Check on this Mac first, one event at a time per automation.
+        let previous = checks[automation.id]
+        checks[automation.id] = Task { [weak self] in
+            await previous?.value
+            guard let center = self?.center else { return }
+            if let verdict = await center.checkOnMac(automation, event), !verdict.goAhead {
+                center.recordDeclined(automation, event: event, reason: verdict.reason)
+                return
+            }
+            self?.admit(automation, event, now: Date())
+        }
+    }
+
+    /// The cooldown and the daily cap, then run it.
+    private func admit(_ automation: Automation, _ event: TriggerEvent, now: Date) {
+        guard let center, !center.isPaused else { return }
+        let decision = gate.admit(automation.id, now: now)
         save()
         switch decision {
         case .fire:

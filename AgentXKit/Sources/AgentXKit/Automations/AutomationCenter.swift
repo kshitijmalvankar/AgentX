@@ -37,6 +37,11 @@ public final class AutomationCenter {
     }
     static let pausedKey = "automationsPaused"
     static let triggeredStartersKey = "triggeredStartersAdded"
+
+    /// The check on this Mac before a triggered Claude run (tests put in their own).
+    @ObservationIgnored var checkOnMac: @MainActor (Automation, TriggerEvent) async -> TriggerCheck.Verdict? = { automation, event in
+        await TriggerCheck.decide(task: automation.prompt, condition: automation.condition, event: event)
+    }
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(directory: URL = AppChannel.current.dataDirectory, defaults: UserDefaults = .standard,
@@ -202,6 +207,33 @@ public final class AutomationCenter {
     func fire(_ automation: Automation, event: TriggerEvent) {
         guard active[automation.id] == nil else { return }
         Task { await run(automation, trigger: .event, event: event) }
+    }
+
+    /// The check on this Mac found the event didn't need Claude. Today's are counted in one
+    /// history entry per automation, so a busy folder or inbox doesn't fill the history.
+    func recordDeclined(_ automation: Automation, event: TriggerEvent, reason: String, now: Date = Date()) {
+        if let i = runs.firstIndex(where: { $0.automationID == automation.id }), let count = runs[i].checkedOnMac,
+           Calendar.current.isDate(runs[i].startedAt, inSameDayAs: now) {
+            runs[i].checkedOnMac = count + 1
+            runs[i].event = event.summary
+            runs[i].summary = Self.declinedSummary(count: count + 1, reason: reason)
+            runs[i].finishedAt = now
+        } else {
+            var run = AutomationRun(automationID: automation.id, automationName: automation.name, trigger: .event)
+            run.startedAt = now
+            run.finishedAt = now
+            run.status = .skipped
+            run.event = event.summary
+            run.checkedOnMac = 1
+            run.summary = Self.declinedSummary(count: 1, reason: reason)
+            runs.insert(run, at: 0)
+        }
+        save()
+    }
+
+    static func declinedSummary(count: Int, reason: String) -> String {
+        count == 1 ? "Checked on this Mac, Claude wasn't needed: \(reason)"
+            : "Checked on this Mac: \(count) events today didn't need Claude. Latest: \(reason)"
     }
 
     /// A trigger went off but the run was skipped (the daily limit).

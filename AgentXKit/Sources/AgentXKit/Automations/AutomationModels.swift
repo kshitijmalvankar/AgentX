@@ -128,6 +128,10 @@ public struct Automation: Codable, Identifiable, Equatable, Sendable {
     public var schedule: AutomationSchedule
     /// Runs when this happens instead of on `schedule` (nil: on the schedule).
     public var trigger: AutomationTrigger?
+    /// Triggered Claude runs: Apple's on-device model checks the event first and starts Claude only when it fits.
+    public var checkFirst: Bool?
+    /// What the check looks for ("the email asks me to do something"). Empty: whether the task has anything to do.
+    public var condition: String?
     public var enabled: Bool
     /// Extra Claude Code permission rules for unattended coding runs, e.g. "Bash(git status:*)".
     public var allowedTools: [String] = []
@@ -137,6 +141,9 @@ public struct Automation: Codable, Identifiable, Equatable, Sendable {
 
     /// "Weekdays at 8:00", or "When a file is added to Downloads".
     public var whenLabel: String { trigger?.label ?? schedule.label }
+
+    /// Whether a triggered run asks Apple's on-device model before starting Claude.
+    public var checksOnMacFirst: Bool { checkFirst == true && trigger != nil && (kind == .assistant || kind == .coding) }
 }
 
 public struct AutomationRun: Codable, Identifiable, Equatable, Sendable {
@@ -158,6 +165,8 @@ public struct AutomationRun: Codable, Identifiable, Equatable, Sendable {
     public var unansweredApprovals = 0
     /// What set it off, for runs started by a trigger ("report.pdf was added to Downloads").
     public var event: String?
+    /// How many events the check on this Mac found didn't need Claude (today's are counted in one entry).
+    public var checkedOnMac: Int?
 }
 
 /// What the scheduler should do about one automation right now.
