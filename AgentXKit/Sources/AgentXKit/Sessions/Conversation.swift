@@ -55,6 +55,10 @@ public final class Conversation: Identifiable {
     public var liveState: LiveState?
     public var model: String?
     public var permissionMode: PermissionModeOption = .default
+    /// Reasoning effort (nil: the model's default).
+    public var effort: EffortOption?
+    /// Ultracode: Claude Code's dynamic-workflow orchestration (coding sessions).
+    public var ultracode = false
 
     /// Set when this conversation is an unattended automation run.
     public var automationRunID: UUID?

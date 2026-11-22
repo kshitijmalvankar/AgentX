@@ -521,6 +521,31 @@ struct SessionControls: View {
                 }
                 .help("What Claude may do without asking: \(conversation.permissionMode.label)")
             }
+
+            Menu {
+                Button { Task { await store.setEffort(nil, ultracode: conversation.ultracode, for: conversation) } } label: {
+                    checked(conversation.effort == nil, "Default")
+                }
+                ForEach(EffortOption.levels(for: currentModel)) { level in
+                    Button { Task { await store.setEffort(level, ultracode: conversation.ultracode, for: conversation) } } label: {
+                        checked(conversation.effort == level, level.label)
+                    }
+                }
+            } label: {
+                Label(conversation.effort.map { "Effort: \($0.label)" } ?? "Default effort", systemImage: "gauge.with.dots.needle.50percent")
+            }
+            .help("How hard Claude thinks. Higher effort uses more of your plan.")
+
+            if conversation.kind == .coding {
+                Toggle(isOn: Binding(get: { conversation.ultracode },
+                                     set: { on in Task { await store.setEffort(conversation.effort, ultracode: on, for: conversation) } })) {
+                    Label("Ultracode", systemImage: "point.3.connected.trianglepath.dotted")
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.borderless)
+                .foregroundStyle(conversation.ultracode ? Color.accentColor : Color.secondary)
+                .help("Ultracode: Claude plans the work and runs it as workflows of agents, at any effort. Uses more of your plan; needs a model that supports it.")
+            }
             Spacer()
         }
         .menuStyle(.borderlessButton)
@@ -529,6 +554,12 @@ struct SessionControls: View {
         .font(.callout)
         .foregroundStyle(.secondary)
         .labelStyle(.titleAndIcon)
+    }
+
+    /// The chosen model, or the default entry when none is chosen.
+    private var currentModel: ModelInfo? {
+        let m = conversation.model ?? "default"
+        return model.models.first(where: { $0.value == m || m.hasPrefix($0.value) })
     }
 
     private var modelLabel: String {

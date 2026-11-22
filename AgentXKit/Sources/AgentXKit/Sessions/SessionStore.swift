@@ -431,6 +431,8 @@ public final class SessionStore {
                     "resume": .optional(c.sessionId),
                     "model": .optional(c.model),
                     "permissionMode": .string(c.permissionMode.rawValue),
+                    "effort": .optional(c.effort?.rawValue),
+                    "ultracode": .bool(c.ultracode),
                 ])
                 c.liveHandle = result["handle"]?.string
                 c.liveState = .running
@@ -463,6 +465,21 @@ public final class SessionStore {
         c.model = model
         guard let handle = c.liveHandle else { return }
         do { try await client.call("session.setModel", ["handle": .string(handle), "model": .optional(model)]) } catch { c.error = error.localizedDescription }
+    }
+
+    /// Effort and ultracode, for the running session right away or from the next message.
+    public func setEffort(_ effort: EffortOption?, ultracode: Bool, for c: Conversation) async {
+        let before = (c.effort, c.ultracode)
+        c.effort = effort
+        c.ultracode = ultracode
+        guard let handle = c.liveHandle else { return }
+        do {
+            try await client.call("session.setEffort", ["handle": .string(handle), "effort": .optional(effort?.rawValue),
+                                                        "ultracode": .bool(ultracode)])
+        } catch {
+            (c.effort, c.ultracode) = before
+            c.error = "Couldn't change the effort: \(error.localizedDescription)"
+        }
     }
 
     public func setPermissionMode(_ mode: PermissionModeOption, for c: Conversation) async {

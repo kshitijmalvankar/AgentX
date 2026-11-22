@@ -21,6 +21,7 @@ import {
   getSessionMessages,
   getSessionInfo,
   type CanUseTool,
+  type EffortLevel,
   type PermissionMode,
   type PermissionResult,
   type Query,
@@ -103,6 +104,10 @@ type StartParams = {
   resume?: string;
   model?: string;
   permissionMode?: PermissionMode;
+  /** Reasoning effort ("low" … "max"); missing: the model's default. */
+  effort?: EffortLevel;
+  /** Ultracode: Claude Code's dynamic-workflow orchestration for the session. */
+  ultracode?: boolean;
   /** Extra system-prompt text (used by the Mac assistant and automations). */
   appendSystemPrompt?: string;
   /** Extra MCP servers (the in-process "agentx" Mac tools server). */
@@ -161,6 +166,8 @@ class LiveSession {
         cwd: params.cwd,
         resume: params.resume,
         model: params.model,
+        effort: params.effort,
+        settings: params.ultracode ? { ultracode: true } : undefined,
         permissionMode: params.permissionMode ?? "default",
         settingSources: [...ALL_SETTINGS],
         systemPrompt: { type: "preset", preset: "claude_code", append },
@@ -329,6 +336,14 @@ class LiveSession {
 
   async setModel(model?: string): Promise<void> {
     await this.q.setModel(model);
+  }
+
+  /**
+   * Effort and ultracode for the next turns. Both keys go together: an effort
+   * change sent alone would turn ultracode off. A null effort is the model's default.
+   */
+  async setEffort(effort: EffortLevel | null, ultracode: boolean): Promise<void> {
+    await this.q.applyFlagSettings({ effortLevel: effort, ultracode });
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -525,6 +540,8 @@ export function registerSessionHandlers(): void {
   handle("session.interrupt", (p: { handle: string }) => getLive(p.handle).interrupt());
   handle("session.setModel", (p: { handle: string; model?: string }) => getLive(p.handle).setModel(p.model));
   handle("session.setPermissionMode", (p: { handle: string; mode: PermissionMode }) => getLive(p.handle).setPermissionMode(p.mode));
+  handle("session.setEffort", (p: { handle: string; effort?: EffortLevel | null; ultracode?: boolean }) =>
+    getLive(p.handle).setEffort(p.effort ?? null, p.ultracode ?? false));
   handle("session.close", (p: { handle: string }) => {
     live.get(p.handle)?.close();
   });

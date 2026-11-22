@@ -47,6 +47,15 @@ struct SessionModeTests {
         #expect(PermissionModeOption.auto.shortLabel == "Auto")
     }
 
+    @Test func effortLevelsFollowTheModel() throws {
+        let json = #"[{"value":"opus","displayName":"Opus","supportedEffortLevels":["low","medium","high","xhigh","max"]},{"value":"haiku","displayName":"Haiku","supportedEffortLevels":["low","medium","high"]},{"value":"old","displayName":"Old"}]"#
+        let models = try JSONDecoder().decode([ModelInfo].self, from: Data(json.utf8))
+        #expect(EffortOption.levels(for: models[0]).map(\.label) == ["Low", "Medium", "High", "Extra high", "Max"])
+        #expect(EffortOption.levels(for: models[1]) == [.low, .medium, .high])
+        #expect(EffortOption.levels(for: models[2]) == EffortOption.allCases, "a model that doesn't say gets every level")
+        #expect(EffortOption.levels(for: nil) == EffortOption.allCases)
+    }
+
     @Test func agentXProcessesAreNamed() {
         #expect(SessionRegistry.appName(ofPath: "/Users/me/Projects/AgentX/build/AgentX Dev.app/Contents/MacOS/AgentX Dev") == "AgentX Dev")
         #expect(SessionRegistry.appName(ofPath: "/Applications/AgentX.app/Contents/MacOS/AgentX") == "AgentX")

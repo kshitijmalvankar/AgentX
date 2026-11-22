@@ -32,7 +32,31 @@ public struct ModelInfo: Codable, Sendable, Identifiable, Hashable {
     public var value: String
     public var displayName: String
     public var description: String?
+    /// The effort levels the model takes ("low" … "max"), when the SDK says.
+    public var supportedEffortLevels: [String]?
     public var id: String { value }
+}
+
+/// Reasoning effort: how hard Claude thinks before answering (and how much plan it uses).
+public enum EffortOption: String, CaseIterable, Identifiable, Sendable {
+    case low, medium, high, xhigh, max
+
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .low: "Low"
+        case .medium: "Medium"
+        case .high: "High"
+        case .xhigh: "Extra high"
+        case .max: "Max"
+        }
+    }
+
+    /// The levels `model` takes; all of them when it doesn't say.
+    public static func levels(for model: ModelInfo?) -> [EffortOption] {
+        guard let listed = model?.supportedEffortLevels, !listed.isEmpty else { return allCases }
+        return allCases.filter { listed.contains($0.rawValue) }
+    }
 }
 
 public struct AccountSnapshot: Codable, Sendable, Equatable {
