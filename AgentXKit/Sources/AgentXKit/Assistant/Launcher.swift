@@ -237,7 +237,13 @@ final class LauncherController {
             dropped = []
             includeContext = true
             fromSelection = true
-            if let job, let text = shared.selectedText { write(job, text: text, claudePrompt: claudePrompt) }
+            guard let job, let text = shared.selectedText else { return }
+            // Any app can call a service: without Apple Intelligence, offer Claude rather than send it.
+            if LocalCommands.shared.isAvailable {
+                write(job, text: text, claudePrompt: claudePrompt)
+            } else {
+                local = .failed("Apple Intelligence isn't available, so this can't be done on this Mac.", text: claudePrompt)
+            }
         }
     }
 
