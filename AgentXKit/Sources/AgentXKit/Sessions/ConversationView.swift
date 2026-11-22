@@ -198,12 +198,6 @@ struct TranscriptView: View {
                     if conversation.isLoadingHistory && conversation.items.isEmpty {
                         ProgressView("Loading history…").frame(maxWidth: .infinity).padding(.top, 40)
                     }
-                    if let error = conversation.error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .font(.callout)
-                            .padding(.bottom, 12)
-                    }
                     let items = conversation.items
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         // Finished rows don't change: skip re-rendering them (Markdown is costly).
@@ -213,6 +207,15 @@ struct TranscriptView: View {
                     }
                     // Streaming text redraws only this part of the transcript.
                     LiveTail(conversation: conversation, proxy: proxy)
+                    // Under your latest message, where you're looking: at the top of a long
+                    // session it was out of sight, so a failed send looked like nothing happened.
+                    if let error = conversation.error {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .padding(.top, 12)
+                    }
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .readingColumn()
@@ -223,6 +226,9 @@ struct TranscriptView: View {
             .defaultScrollAnchor(.top, for: .alignment)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .onChange(of: conversation.error) { _, error in
+                if error != nil { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
             .onChange(of: conversation.items.count) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
