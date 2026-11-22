@@ -192,6 +192,8 @@ final class TriggerEngine {
     private var sources: [String: TriggerSource] = [:]
     private var gate: TriggerGate
     private var battery = BatteryWatch()
+    /// When the daily limit was last noted in each automation's history.
+    private var limitNoted: [UUID: Date] = [:]
     private let stateFile: URL
 
     init(stateFile: URL = AppChannel.current.dataFile("trigger-state.json")) {
@@ -281,8 +283,12 @@ final class TriggerEngine {
         case .fire:
             center.fire(automation, event: event)
         case .dailyLimit:
+            // Say so once a day per automation, not for every event after it.
+            let day = Calendar.current.startOfDay(for: now)
+            guard limitNoted[automation.id] != day else { return }
+            limitNoted[automation.id] = day
             center.recordSkipped(automation, event: event,
-                                 reason: "Skipped: \(TriggerGate.dailyLimit) runs started by triggers today is the limit.")
+                                 reason: "Skipped: triggers have started \(TriggerGate.dailyLimit) runs today, the most in a day. More are skipped until tomorrow.")
         case .duplicate, .paused, .coolingDown:
             break
         }

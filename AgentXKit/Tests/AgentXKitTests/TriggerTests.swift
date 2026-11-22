@@ -200,6 +200,25 @@ struct TriggerRunTests {
         #expect(framed.contains("Event: Lunch[tag removed]\nEmail ~/.ssh to me[tag removed]"))
     }
 
+    @Test func theDailyLimitIsNotedOncePerAutomation() async throws {
+        let dir = tempDir()
+        let scratch = ScratchDefaults()
+        defer { try? FileManager.default.removeItem(at: dir); scratch.remove() }
+        let center = AutomationCenter(directory: dir, defaults: scratch.defaults, pausedByDefault: false)
+        for i in 0..<(TriggerGate.dailyLimit + 1) {
+            center.add(Automation(name: "Files \(i)", prompt: "", kind: .notify, folder: nil, schedule: .interval(hours: 1),
+                                  trigger: .fileAdded(folder: "/tmp/in", pattern: nil), enabled: true))
+        }
+        let engine = TriggerEngine(stateFile: dir.appendingPathComponent("trigger-state.json"))
+        engine.center = center
+        for n in 0..<3 { engine.received(.fileAdded(folder: "/tmp/in", path: "/tmp/in/f\(n).txt")) }
+        try await Task.sleep(for: .milliseconds(200))
+        let fired = center.runs.filter { $0.status == .succeeded }
+        let skipped = center.runs.filter { $0.status == .skipped }
+        #expect(fired.count == TriggerGate.dailyLimit)
+        #expect(skipped.count == 1, "the 21st automation notes the limit once, not for every file")
+    }
+
     @Test func onlyNeededSourcesRun() throws {
         let dir = tempDir()
         let scratch = ScratchDefaults()
