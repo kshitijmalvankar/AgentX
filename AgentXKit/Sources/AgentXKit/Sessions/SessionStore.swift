@@ -81,6 +81,7 @@ public final class SessionStore {
     @ObservationIgnored private var approvalWaiters: [String: CheckedContinuation<JSONValue, Never>] = [:]
     @ObservationIgnored private var watcher: DirectoryWatcher?
     @ObservationIgnored private var registryWatcher: DirectoryWatcher?
+    @ObservationIgnored private var registryCheck: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// Conversation id → timer that closes its idle Claude Code process.
     @ObservationIgnored private var idleTimers: [String: Task<Void, Never>] = [:]
@@ -272,6 +273,15 @@ public final class SessionStore {
         registryWatcher.start()
         self.registryWatcher = registryWatcher
         refreshExternalOwners()
+        // A process that quits can leave its entry behind, so the folder may not change:
+        // look every few seconds whether any of the other apps' processes has gone.
+        registryCheck = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self else { return }
+                if SessionRegistry.anyQuit(self.externalOwners.values.flatMap { $0.map(\.pid) }) { self.refreshExternalOwners() }
+            }
+        }
     }
 
     // MARK: Opening & starting

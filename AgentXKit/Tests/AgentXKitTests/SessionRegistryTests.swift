@@ -38,3 +38,19 @@ struct SessionRegistryTests {
         #expect(ExternalSession(pid: 1, entrypoint: nil).appName == "another Claude Code window")
     }
 }
+
+@Suite("Other apps with a session open")
+struct OtherAppsTests {
+    @Test func agentXProcessesAreNamed() {
+        #expect(SessionRegistry.appName(ofPath: "/Users/me/Projects/AgentX/build/AgentX Dev.app/Contents/MacOS/AgentX Dev") == "AgentX Dev")
+        #expect(SessionRegistry.appName(ofPath: "/Applications/AgentX.app/Contents/MacOS/AgentX") == "AgentX")
+        #expect(SessionRegistry.appName(ofPath: "/Users/me/.nvm/versions/node/v24.13.0/bin/node") == nil)
+        #expect(ExternalSession(pid: 1, entrypoint: "sdk-ts", hostApp: "AgentX Dev").appName == "AgentX Dev")
+        #expect(ExternalSession(pid: 1, entrypoint: "sdk-ts").appName == "another Agent SDK app")
+    }
+
+    @Test func aQuitProcessIsNoticed() {
+        #expect(!SessionRegistry.anyQuit([getpid()]))
+        #expect(SessionRegistry.anyQuit([getpid(), 999_999]))
+    }
+}
