@@ -100,6 +100,8 @@ struct AutomationCenterTests {
         #expect(center.isPaused, "AgentX Dev starts with automations paused")
         var a = center.automations[0]
         a.enabled = true
+        // Every day, so a run was missed whatever day the test runs on (weekdays-only missed none on a Sunday).
+        a.schedule = .daily(hour: 8, minute: 0, weekdays: [])
         center.update(a)
         var due = try #require(center.automations.first { $0.id == a.id })
         due.lastScheduledAt = Date().addingTimeInterval(-2 * 86_400)
