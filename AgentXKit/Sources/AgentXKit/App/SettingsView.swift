@@ -26,6 +26,7 @@ private struct GeneralSettings: View {
         Form {
             Section("Launcher") {
                 KeyboardShortcuts.Recorder("Open the launcher:", name: .toggleLauncher)
+                ShortcutClashNote(name: .toggleLauncher)
                 Text("Ask the assistant from anywhere, or type /code <project> <task> to start a coding session.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

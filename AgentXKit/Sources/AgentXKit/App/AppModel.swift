@@ -197,6 +197,7 @@ public final class AppModel {
 
     private func startUp() async {
         NotificationManager.shared.configure(store: sessions)
+        ShortcutConflicts.warnOnce()
         AssistantWorkspace.prepare()
         memory.startWatching()
         FrontmostTracker.shared.start()
