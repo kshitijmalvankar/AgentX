@@ -32,6 +32,11 @@ enum ScreenText {
         }.value
     }
 
+    /// The text in an image (a circled part of the screen), top to bottom.
+    nonisolated static func text(in image: CGImage) -> String {
+        ((try? recognize(image)) ?? []).map(\.text).joined(separator: "\n")
+    }
+
     private struct Line { let text: String; let candidate: VNRecognizedText; let box: CGRect }
 
     private static func recognize(_ image: CGImage) throws -> [Line] {

@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 /// Settings → Assistant → Launcher and pointer.
@@ -42,6 +43,12 @@ struct LauncherSettingsSection: View {
             }
             toggle($bubble, "Show an Ask button when you select text",
                    "Select text in any app and a small button appears by the pointer, with Explain, Summarize, Fix the Writing and more. AgentX notices only where you let go of the mouse; nothing is read until you click it.")
+            VStack(alignment: .leading, spacing: 4) {
+                KeyboardShortcuts.Recorder("Circle to Ask:", name: .circleToAsk)
+                Text("Press it, then circle anything on screen (a paragraph, a chart, an error) to ask about it. AgentX reads only what you circle, on this Mac, and offers Explain, Summarize, Translate or your own question. Needs Screen Recording.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             toggle($holdToTalk, "Hold the shortcut to talk",
                    "Hold it, speak, and let go to send (or click the microphone). Speech is recognized on this Mac; only the words go to Claude.")
             toggle($readAloud, "Read answers aloud when you ask by voice", "With macOS's own voices, on this Mac.")

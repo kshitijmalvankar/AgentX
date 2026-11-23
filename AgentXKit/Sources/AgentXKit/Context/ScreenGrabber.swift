@@ -28,6 +28,10 @@ enum ScreenGrabber {
         /// Where the window was (global, origin top-left of the main screen) and the picture's size in pixels.
         var windowFrame: CGRect = .zero
         var imageSize: CGSize = .zero
+        /// What the chip says ("What you circled"); nil: "Picture of <app>'s window".
+        var caption: String? = nil
+
+        var label: String { caption ?? "Picture of \(appName)'s window" }
     }
 
     /// The last picture's geometry, so screen_point can turn a spot in it into a place on screen.

@@ -247,6 +247,27 @@ final class LauncherController {
         }
     }
 
+    /// Circle to Ask: open next to the area you circled, with its text (read on this Mac)
+    /// as the selection and the quick actions, plus a picture of it when it's mostly not text.
+    func showCircled(text: String, picture: ScreenGrabber.Picture?, from app: NSRunningApplication?, near region: CGRect) {
+        // Just below the circled area's bottom-left corner (AppKit coordinates).
+        let mainHeight = NSScreen.screens.first?.frame.height ?? 0
+        show(anchor: .point(NSPoint(x: region.minX, y: mainHeight - region.maxY)), fromSelection: true)
+        var shared = ScreenContext(appName: app?.localizedName ?? "your screen", bundleID: app?.bundleIdentifier)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            // Same rule as a selection: a secret isn't kept.
+            if let secret = SecretDetector.find(in: trimmed) { shared.selectionWithheld = secret } else { shared.selectedText = trimmed }
+        }
+        captureTask?.cancel()
+        context = shared
+        contextApp = app
+        dropped = []
+        includeContext = true
+        self.picture = picture
+        if trimmed.isEmpty, picture == nil { error = "Nothing readable in that area. Try circling it again." }
+    }
+
     /// Open on a conversation (one Siri or a Shortcut started that's still going).
     func showConversation(_ id: String) {
         Task {
@@ -906,7 +927,7 @@ private struct ContextChips: View {
                 if let image = NSImage(data: picture.jpeg) {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fill).frame(width: 28, height: 18).clipShape(.rect(cornerRadius: 3))
                 }
-                Text("Picture of \(picture.appName)'s window").lineLimit(1)
+                Text(picture.label).lineLimit(1)
             }
             .contentShape(.rect)
             .onTapGesture { preview = open ? nil : .picture }
@@ -945,7 +966,7 @@ private struct ContextChips: View {
             }
         case .picture:
             if let picture = launcher.picture, let image = NSImage(data: picture.jpeg) {
-                previewFrame("Picture of \(picture.appName)'s window") {
+                previewFrame(picture.label) {
                     Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 220)
                         .clipShape(.rect(cornerRadius: Radius.inset))
                 }
