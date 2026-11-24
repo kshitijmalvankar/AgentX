@@ -28,19 +28,31 @@ public struct ApprovalRequest: Identifiable, Sendable {
     public var unattended = false
     /// A read-only connector tool the policy asked about: "Always Allow" trusts it from now on.
     public var canTrustTool = false
+    /// What "Always Allow" allows, in words ("Allow All Edits"; "Don't ask again … for Bash(npm test:*)").
+    public var alwaysAllowLabel: String?
+    public var alwaysAllowDetail: String?
     public let receivedAt = Date()
 
-    public var headline: String { title ?? "Claude wants to use \(SecuritySettings.displayName(ofTool: toolName))" }
+    public var headline: String {
+        if isQuestion { return "Claude has a question" }
+        return title ?? "Claude wants to use \(SecuritySettings.displayName(ofTool: toolName))"
+    }
+
+    /// Claude asking you something (AskUserQuestion): it needs an answer, not an Allow.
+    public var isQuestion: Bool { toolName == "AskUserQuestion" }
 }
 
 public enum ApprovalAnswer: Sendable {
     case allow
     case allowAlways
     case deny(String? = nil)
+    /// Allow with the tool's input changed (a question's answers) and/or the session switched
+    /// to a mode (approving a plan: edit automatically, or keep asking).
+    case allowWith(input: JSONValue?, mode: PermissionModeOption?)
 
     var logLabel: String {
         switch self {
-        case .allow: "allowed"
+        case .allow, .allowWith: "allowed"
         case .allowAlways: "always allowed"
         case .deny: "denied"
         }
@@ -48,9 +60,15 @@ public enum ApprovalAnswer: Sendable {
 
     var json: JSONValue {
         switch self {
-        case .allow: ["behavior": "allow"]
-        case .allowAlways: ["behavior": "allowAlways"]
-        case .deny(let message): ["behavior": "deny", "message": .optional(message)]
+        case .allow: return ["behavior": "allow"]
+        case .allowAlways: return ["behavior": "allowAlways"]
+        case .deny(let message): return ["behavior": "deny", "message": .optional(message)]
+        case .allowWith(let input, let mode):
+            // Leave out what isn't set: the SDK reads null as a value.
+            var fields: [String: JSONValue] = ["behavior": "allow"]
+            if let input { fields["updatedInput"] = input }
+            if let mode { fields["mode"] = .string(mode.rawValue) }
+            return .object(fields)
         }
     }
 }
@@ -532,15 +550,30 @@ public final class SessionStore {
 
     public func answer(_ approval: ApprovalRequest, _ answer: ApprovalAnswer) {
         guard approvals.contains(where: { $0.id == approval.id }) else { return }
+        // A question needs its answers (the session's question card): a bare Allow from a
+        // notification, the menu bar or the phone would send Claude an empty answer.
+        if approval.isQuestion {
+            switch answer {
+            case .allow, .allowAlways: return
+            case .deny, .allowWith: break
+            }
+        }
         var answer = answer
         // "Always Allow" on a policy ask: trust the tool in AgentX (agent-core's rule), then allow this one.
         if case .allowAlways = answer, approval.canTrustTool, !approval.canAlwaysAllow {
             onTrustTool?(approval.toolName)
             answer = .allow
         }
+        // Approving a plan can switch the mode: show it right away (Claude Code confirms with a status message).
+        if case .allowWith(_, let mode?) = answer { conversation(forHandle: approval.handle)?.permissionMode = mode }
         approvals.removeAll { $0.id == approval.id }
         approvalWaiters.removeValue(forKey: approval.id)?.resume(returning: answer.json)
         onApprovalAnswered?(approval, answer)
+    }
+
+    /// The conversation an approval belongs to, to open it (answering a question needs the session).
+    public func conversationKey(for approval: ApprovalRequest) -> String? {
+        approval.sessionId ?? conversation(forHandle: approval.handle)?.id
     }
 
     /// The conversation a sidecar handle belongs to: its title and session id (for the activity log).
@@ -581,6 +614,8 @@ public final class SessionStore {
             request.recentRiskyActions = params["recentRiskyActions"]?.int ?? 0
             request.unattended = params["unattended"]?.bool ?? false
             request.canTrustTool = params["canTrustTool"]?.bool ?? false
+            request.alwaysAllowLabel = params["alwaysAllow"]?["label"]?.string
+            request.alwaysAllowDetail = params["alwaysAllow"]?["detail"]?.string
             if let owner, owner.automationRunID != nil {
                 request.automationName = owner.title
                 // Nobody may be watching: deny it if it isn't answered in time.

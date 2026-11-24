@@ -24,6 +24,7 @@ import {
   type EffortLevel,
   type PermissionMode,
   type PermissionResult,
+  type PermissionUpdate,
   type Query,
   type SDKMessage,
   type SDKUserMessage,
@@ -121,7 +122,14 @@ type StartParams = {
   images?: ImageInput[];
 };
 
-type PermissionAnswer = { behavior: "allow" | "allowAlways" | "deny"; message?: string };
+type PermissionAnswer = {
+  behavior: "allow" | "allowAlways" | "deny";
+  message?: string;
+  /** The tool's input with your answers filled in (AskUserQuestion's `answers`). */
+  updatedInput?: Record<string, unknown>;
+  /** Switch the session to this mode as you allow (approving a plan: edit automatically, or keep asking). */
+  mode?: PermissionMode;
+};
 
 class LiveSession {
   readonly handle = randomUUID();
@@ -395,6 +403,8 @@ class LiveSession {
           defaultToNo: opts.defaultToNo ?? false,
           canAlwaysAllow: (opts.suggestions?.length ?? 0) > 0 && !opts.suppressAlwaysAllowRule && !policyReason
             && (this.policy?.mayAlwaysAllow(toolName) ?? true),
+          // What "Always Allow" would allow, in words (all edits this session, `npm test` commands…).
+          alwaysAllow: describeAlwaysAllow(opts.suggestions),
           // A read-only connector tool the policy asked about: the app can trust it from now on.
           canTrustTool: policyReason !== undefined && (this.policy?.mayTrust(toolName) ?? false),
           policyReason,
@@ -423,10 +433,33 @@ function summarizeInput(input: unknown): string {
   return text.replace(/\s+/g, " ").slice(0, 300);
 }
 
-function toPermissionResult(answer: PermissionAnswer, suggestions: Parameters<CanUseTool>[2]["suggestions"]): PermissionResult {
+/** "Always Allow" in words: what Claude Code's suggestion would stop asking about. */
+export function describeAlwaysAllow(suggestions: PermissionUpdate[] | undefined): { label: string; detail: string } | undefined {
+  if (!suggestions?.length) return undefined;
+  if (suggestions.some((s) => s.type === "setMode" && s.mode === "acceptEdits")) {
+    return { label: "Allow All Edits", detail: "Stop asking about file edits in this session (Accept edits mode)" };
+  }
+  const rules = suggestions.flatMap((s) => (s.type === "addRules" && s.behavior === "allow" ? s.rules : []));
+  if (rules.length) {
+    const names = rules.map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName));
+    const where = suggestions.some((s) => s.type === "addRules" && (s.destination === "projectSettings" || s.destination === "localSettings"))
+      ? "in this project" : "in this session";
+    return { label: "Always Allow", detail: `Don't ask again ${where} for ${names.join(", ")}` };
+  }
+  const dirs = suggestions.flatMap((s) => (s.type === "addDirectories" ? s.directories : []));
+  if (dirs.length) return { label: "Always Allow", detail: `Let Claude work in ${dirs.join(", ")} from now on` };
+  return { label: "Always Allow", detail: "Don't ask again for this kind of action" };
+}
+
+export function toPermissionResult(answer: PermissionAnswer, suggestions: Parameters<CanUseTool>[2]["suggestions"]): PermissionResult {
   switch (answer.behavior) {
     case "allow":
-      return { behavior: "allow", decisionClassification: "user_temporary" };
+      return {
+        behavior: "allow",
+        updatedInput: answer.updatedInput ?? undefined,
+        updatedPermissions: answer.mode ? [{ type: "setMode", mode: answer.mode, destination: "session" }] : undefined,
+        decisionClassification: "user_temporary",
+      };
     case "allowAlways":
       return { behavior: "allow", updatedPermissions: suggestions, decisionClassification: "user_permanent" };
     default:
