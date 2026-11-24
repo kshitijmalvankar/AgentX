@@ -10,31 +10,32 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
+            // Everything arrives in reading order, a beat apart.
             VStack(alignment: .leading, spacing: 26) {
-                header
-                StatusStrip()
+                header.arrives()
+                StatusStrip().arrives(delay: 0.02)
 
                 section("Work") {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-                        PullRequestsCard()
-                        AgentsCard()
-                        RecentSessionsCard()
-                        WorkInProgressCard()
+                        PullRequestsCard().arrives(delay: 0.04)
+                        AgentsCard().arrives(delay: 0.06)
+                        RecentSessionsCard().arrives(delay: 0.08)
+                        WorkInProgressCard().arrives(delay: 0.10)
                     }
-                    GitHubActivityCard()
+                    GitHubActivityCard().arrives(delay: 0.12)
                 }
 
                 section("Your day") {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-                        TodayCard()
-                        AutomationsCard()
+                        TodayCard().arrives(delay: 0.14)
+                        AutomationsCard().arrives(delay: 0.16)
                     }
                 }
 
                 section("Claude and this Mac") {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-                        PlanCard()
-                        VitalsCard()
+                        PlanCard().arrives(delay: 0.18)
+                        VitalsCard().arrives(delay: 0.20)
                     }
                 }
             }
@@ -127,15 +128,39 @@ private struct StatusStrip: View {
     }
 
     private func pill(_ text: String, _ symbol: String, _ tint: Color, action: @escaping () -> Void) -> some View {
+        StatusPill(text: text, symbol: symbol, tint: tint, urgent: symbol == "hand.raised.fill", action: action)
+    }
+}
+
+/// One status pill: numbers roll when they change, it grows a little under the
+/// pointer, and "waiting for you" pulses until you look.
+private struct StatusPill: View {
+    let text: String
+    let symbol: String
+    let tint: Color
+    var urgent = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
         Button(action: action) {
-            Label(text, systemImage: symbol)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(tint == .secondary ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            Label {
+                Text(text).contentTransition(.numericText())
+            } icon: {
+                Image(systemName: symbol)
+                    .symbolEffect(.pulse, isActive: urgent)
+                    .symbolEffect(.bounce, value: text)
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(tint == .secondary ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.tint(tint == .secondary ? nil : tint.opacity(0.12)), in: .capsule)
+        .glassEffect(.regular.tint(tint == .secondary ? nil : tint.opacity(hovering ? 0.2 : 0.12)).interactive(), in: .capsule)
+        .animation(Motion.quick, value: hovering)
+        .animation(Motion.quick, value: text)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -162,10 +187,12 @@ private struct CardRow<Leading: View, Trailing: View>: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(hovering ? AnyShapeStyle(.primary.opacity(0.06)) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 8))
+            .background(hovering ? AnyShapeStyle(.primary.opacity(0.07)) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 8))
+            .offset(x: hovering ? 2 : 0)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .animation(Motion.quick, value: hovering)
         .onHover { hovering = $0 }
         .padding(.horizontal, -8)
     }
@@ -412,11 +439,11 @@ private struct PlanCard: View {
         let color: Color = window.fraction >= 0.95 ? .red : window.fraction >= 0.8 ? .orange : .accentColor
         return VStack(spacing: 6) {
             ZStack {
-                Circle().stroke(.quaternary, lineWidth: 7)
-                Circle().trim(from: 0, to: max(0.01, min(1, window.fraction)))
-                    .stroke(color.gradient, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+                // Fills up when the card arrives, and glides when usage changes.
+                AnimatedRing(fraction: window.fraction, color: color)
                 Text(Format.percent(window.fraction)).font(.callout.weight(.semibold)).monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(Motion.settle, value: window.fraction)
             }
             .frame(width: 66, height: 66)
             Text(window.id == "five_hour" ? "Session" : "Week").font(.caption).foregroundStyle(.secondary)

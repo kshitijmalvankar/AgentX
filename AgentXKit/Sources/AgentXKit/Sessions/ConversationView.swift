@@ -157,18 +157,20 @@ struct ConversationView: View {
 
     // MARK: Approvals
 
-    @ViewBuilder private var approvals: some View {
+    /// Approval, plan and question cards spring up from the message box, and shrink away once answered.
+    private var approvals: some View {
         let pending = store.approvals(for: conversation)
-        if !pending.isEmpty {
-            VStack(spacing: 8) {
-                ForEach(pending) { approval in
-                    ApprovalCard(approval: approval) { answer in store.answer(approval, answer) }
-                }
+        return VStack(spacing: 8) {
+            ForEach(pending) { approval in
+                ApprovalCard(approval: approval) { answer in store.answer(approval, answer) }
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                            removal: .opacity.combined(with: .scale(scale: 0.96))))
             }
-            .readingColumn()
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
         }
+        .readingColumn()
+        .padding(.horizontal, 28)
+        .padding(.top, pending.isEmpty ? 0 : 8)
+        .animation(Motion.arrive, value: pending.map(\.id))
     }
 }
 
@@ -176,6 +178,9 @@ struct ConversationView: View {
 
 struct TranscriptView: View {
     let conversation: Conversation
+    /// Messages from this index on arrived while you watched, so they ease in (history doesn't).
+    @State private var settledFor: String?
+    @State private var settledCount = Int.max
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -189,6 +194,7 @@ struct TranscriptView: View {
                         // Finished rows don't change: skip re-rendering them (Markdown is costly).
                         TranscriptRow(item: item, cwd: conversation.cwd)
                             .equatable()
+                            .arrives(distance: 8, enabled: settledFor == conversation.id && index >= settledCount)
                             .padding(.top, index == 0 ? 0 : Self.gap(after: items[index - 1].kind, before: item.kind))
                     }
                     // Streaming text redraws only this part of the transcript.
@@ -215,11 +221,20 @@ struct TranscriptView: View {
             .onChange(of: conversation.error) { _, error in
                 if error != nil { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+            .onAppear(perform: settle)
+            .onChange(of: conversation.id) { settle() }
+            .onChange(of: conversation.isLoadingHistory) { settle() }
             .onChange(of: conversation.items.count) { proxy.scrollTo("bottom", anchor: .bottom) }
         }
     }
 
     /// Tool calls sit close together; messages get room to breathe.
+    /// What's there now (or once history has loaded) stays put; anything after it eases in.
+    private func settle() {
+        settledFor = conversation.id
+        settledCount = conversation.isLoadingHistory ? Int.max : conversation.items.count
+    }
+
     static func gap(after previous: TranscriptKind, before item: TranscriptKind) -> CGFloat {
         switch (previous, item) {
         case (.tool, .tool), (.thinking, .tool), (.tool, .thinking): 2
@@ -274,13 +289,9 @@ private struct LiveTail: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 12)
             } else if conversation.liveState == .running || conversation.liveState == .starting {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.mini)
-                    Text(conversation.draftThinking.isEmpty ? "Working…" : "Thinking…")
-                }
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 12)
+                WorkingIndicator(text: conversation.draftThinking.isEmpty ? "Working…" : "Thinking…")
+                    .padding(.top, 12)
+                    .transition(.opacity)
             }
         }
         .onChange(of: conversation.draftText.count / 200) { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -434,6 +445,7 @@ struct Composer<Controls: View>: View {
     /// A row under the field (the model and mode menus for sessions).
     @ViewBuilder var controls: Controls
     @FocusState private var focused: Bool
+    @State private var sent = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -459,6 +471,12 @@ struct Composer<Controls: View>: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .glassEffect(.regular, in: .rect(cornerRadius: Radius.field))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Radius.field)
+                        .strokeBorder(Color.accentColor.opacity(focused ? 0.5 : 0), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                }
+                .animation(Motion.quick, value: focused)
             if isWorking {
                 Button("Stop", systemImage: "stop.fill", action: stop)
                     .labelStyle(.iconOnly)
@@ -468,6 +486,7 @@ struct Composer<Controls: View>: View {
                     .keyboardShortcut(".", modifiers: .command)
             }
             Button("Send", systemImage: "arrow.up", action: submit)
+                .symbolEffect(.bounce.up, value: sent)
                 .labelStyle(.iconOnly)
                 .primaryButton()
                 .controlSize(.large)
@@ -479,6 +498,7 @@ struct Composer<Controls: View>: View {
         let value = text
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         text = ""
+        sent += 1
         send(value)
     }
 }

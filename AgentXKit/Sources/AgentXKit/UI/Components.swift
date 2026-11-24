@@ -30,7 +30,7 @@ struct GlassCard<Content: View, Accessory: View>: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .agentCard)
+        .glassEffect(.regular.interactive(), in: .agentCard)
     }
 }
 

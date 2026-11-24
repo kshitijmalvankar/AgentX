@@ -5,6 +5,8 @@ import SwiftUI
 struct LauncherResultsList: View {
     @State private var launcher = LauncherController.shared
     @State private var lastPointer: CGPoint?
+    /// The highlight glides from row to row instead of jumping.
+    @Namespace private var highlight
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -13,6 +15,7 @@ struct LauncherResultsList: View {
                     ForEach(Array(launcher.results.enumerated()), id: \.element.id) { index, result in
                         row(result, index: index, selected: index == launcher.selectedResult)
                             .id(result.id)
+                            .transition(.opacity.combined(with: .offset(y: -4)))
                             .contentShape(.rect)
                             .onTapGesture {
                                 launcher.selectedResult = index
@@ -34,6 +37,8 @@ struct LauncherResultsList: View {
             }
             .frame(maxHeight: launcher.compact ? 300 : 380)
             .fixedSize(horizontal: false, vertical: true)
+            .animation(Motion.quick, value: launcher.selectedResult)
+            .animation(Motion.quick, value: launcher.results.map(\.id))
             .onChange(of: launcher.selectedResult) { _, i in
                 if launcher.results.indices.contains(i) { proxy.scrollTo(launcher.results[i].id) }
             }
@@ -63,7 +68,13 @@ struct LauncherResultsList: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(selected ? AnyShapeStyle(.primary.opacity(0.1)) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 14))
+        .background {
+            if selected {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.primary.opacity(0.1))
+                    .matchedGeometryEffect(id: "selection", in: highlight)
+            }
+        }
     }
 
     @ViewBuilder private func icon(_ icon: LauncherResult.Icon) -> some View {

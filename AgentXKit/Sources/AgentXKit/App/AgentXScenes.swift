@@ -153,6 +153,7 @@ private struct Sidebar: View {
                             HStack {
                                 Image(systemName: c.liveState?.symbol ?? "bolt")
                                     .foregroundStyle(c.liveState == .waiting ? .orange : .blue)
+                                    .symbolEffect(.pulse, isActive: c.isWorking)
                                 Text(c.title).lineLimit(1)
                             }
                         }

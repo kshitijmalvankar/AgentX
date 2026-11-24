@@ -52,8 +52,9 @@ struct AutomationsView: View {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout)
                 }
                 VStack(spacing: 12) {
-                    ForEach(center.automations) { automation in
+                    ForEach(Array(center.automations.enumerated()), id: \.element.id) { index, automation in
                         AutomationCard(automation: automation, edit: { editing = automation })
+                            .arrives(delay: 0.02 * Double(min(index, 6)))
                     }
                 }
                 if !center.runs.isEmpty {
@@ -183,7 +184,7 @@ private struct AutomationCard: View {
             .controlSize(.small)
         }
         .padding(16)
-        .glassEffect(.regular, in: .agentCard)
+        .glassEffect(.regular.interactive(), in: .agentCard)
         .confirmationDialog("Delete \"\(automation.name)\"?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { center.delete(automation.id) }
         } message: {
