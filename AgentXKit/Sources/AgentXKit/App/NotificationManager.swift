@@ -39,7 +39,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let summary = ToolPresentation.summary(name: request.toolName, input: request.input, cwd: request.cwd)
         content.body = request.policyReason.map { "\(summary)\n\($0)" } ?? summary
         // A burst of requests: make them open AgentX and look, rather than allow from the banner.
-        content.categoryIdentifier = request.recentRiskyActions > 3 ? "" : Self.approvalCategory
+        // A question is answered in AgentX, so no Allow/Deny buttons on the banner.
+        content.categoryIdentifier = request.recentRiskyActions > 3 || request.isQuestion ? "" : Self.approvalCategory
         content.sound = .default
         content.userInfo = ["approvalID": request.id]
         let req = UNNotificationRequest(identifier: request.id, content: content, trigger: nil)

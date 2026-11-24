@@ -95,6 +95,10 @@ struct ToolInputView: View {
             OutputBlock(text: input["content"]?.string ?? "", isError: false, maxLines: 40)
         case "Bash":
             OutputBlock(text: "$ " + (input["command"]?.string ?? ""), isError: false)
+        case "ExitPlanMode":
+            PlanDocument(plan: input["plan"]?.string ?? "", path: input["planFilePath"]?.string)
+        case "AskUserQuestion":
+            QuestionsAnswered(input: input)
         case "TodoWrite":
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array((input["todos"]?.array ?? []).enumerated()), id: \.offset) { _, todo in
@@ -156,6 +160,15 @@ struct ApprovalCard: View {
     @State private var showDenyReason = false
 
     var body: some View {
+        switch approval.toolName {
+        // A plan to approve, and questions to answer, aren't permissions: they get their own cards.
+        case "ExitPlanMode": PlanApprovalCard(approval: approval, answer: answer)
+        case "AskUserQuestion": QuestionCard(approval: approval, answer: answer)
+        default: permissionCard
+        }
+    }
+
+    private var permissionCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
@@ -210,11 +223,11 @@ struct ApprovalCard: View {
                 .keyboardShortcut(approval.defaultToNo ? .defaultAction : .cancelAction)
                 Spacer()
                 if approval.canAlwaysAllow || approval.canTrustTool {
-                    Button("Always Allow") { answer(.allowAlways) }
+                    Button(approval.canAlwaysAllow ? approval.alwaysAllowLabel ?? "Always Allow" : "Always Allow") { answer(.allowAlways) }
                         .secondaryButton()
-                        .help(approval.canTrustTool
+                        .help(approval.canTrustTool && !approval.canAlwaysAllow
                               ? "Let \(SecuritySettings.displayName(ofTool: approval.toolName)) run without asking, even after untrusted content. It only reads. Undo in Settings → Security."
-                              : "Don't ask again for this kind of action in this project")
+                              : approval.alwaysAllowDetail ?? "Don't ask again for this kind of action")
                 }
                 Button("Allow") { answer(.allow) }
                     .primaryButton()
@@ -223,5 +236,219 @@ struct ApprovalCard: View {
         }
         .padding(12)
         .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .agentCard)
+    }
+}
+
+
+// MARK: - Plans
+
+/// A plan Claude wrote, rendered as a document (not the raw text), with its file.
+struct PlanDocument: View {
+    let plan: String
+    let path: String?
+    var maxHeight: CGFloat? = 420
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if plan.isEmpty {
+                Text("The plan is in the next message.").foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    MarkdownText(text: plan).padding(14)
+                }
+                .frame(maxHeight: maxHeight)
+                .background(.background.opacity(0.5), in: .rect(cornerRadius: Radius.inset))
+            }
+            if let path {
+                HStack(spacing: 10) {
+                    Label(path.abbreviatingHome, systemImage: "doc.text").lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Button("Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(plan, forType: .string)
+                    }
+                    .buttonStyle(.link)
+                    Button("Open") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }.buttonStyle(.link)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Approving a plan, like the Claude app: edit automatically, approve but keep asking, or keep planning.
+private struct PlanApprovalCard: View {
+    let approval: ApprovalRequest
+    let answer: (ApprovalAnswer) -> Void
+    @State private var feedback = ""
+    @State private var givingFeedback = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Claude has a plan", systemImage: "list.bullet.clipboard")
+                .font(.headline)
+            PlanDocument(plan: approval.input["plan"]?.string ?? "", path: approval.input["planFilePath"]?.string)
+            if givingFeedback {
+                TextField("What should change? (optional)", text: $feedback, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...4)
+                    .onSubmit(keepPlanning)
+            }
+            HStack {
+                Button(givingFeedback ? "Send to Claude" : "Keep Planning…", action: keepPlanning)
+                    .secondaryButton()
+                    .help("Claude keeps planning, with your notes")
+                Spacer()
+                Button("Approve, Ask Before Edits") { answer(.allowWith(input: nil, mode: .default)) }
+                    .secondaryButton()
+                    .help("Start, and ask before each file edit and command")
+                Button("Approve and Edit Automatically") { answer(.allowWith(input: nil, mode: .acceptEdits)) }
+                    .primaryButton()
+                    .keyboardShortcut(.defaultAction)
+                    .help("Start, editing files without asking (commands still ask). Same as Accept edits mode.")
+            }
+        }
+        .padding(14)
+        .glassEffect(.regular.tint(.blue.opacity(0.12)), in: .agentCard)
+    }
+
+    private func keepPlanning() {
+        guard givingFeedback else { givingFeedback = true; return }
+        let note = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
+        answer(.deny(note.isEmpty ? "The user wants to keep planning. Don't start yet." : "Keep planning. The user says: \(note)"))
+    }
+}
+
+// MARK: - Questions
+
+/// One of Claude's questions, as AskUserQuestion sends it.
+struct ClaudeQuestion: Identifiable, Equatable {
+    struct Option: Equatable { var label: String; var description: String }
+    var id: String { question }
+    var question: String
+    var header: String
+    var multiSelect: Bool
+    var options: [Option]
+
+    static func all(in input: JSONValue) -> [ClaudeQuestion] {
+        (input["questions"]?.array ?? []).compactMap { q in
+            guard let text = q["question"]?.string else { return nil }
+            return ClaudeQuestion(question: text, header: q["header"]?.string ?? "", multiSelect: q["multiSelect"]?.bool ?? false,
+                                  options: (q["options"]?.array ?? []).compactMap { o in
+                                      o["label"]?.string.map { Option(label: $0, description: o["description"]?.string ?? "") }
+                                  })
+        }
+    }
+
+    /// The tool's input with the answers added, as Claude Code expects: question → answer
+    /// (several picks separated by commas; your own words for "Other").
+    static func answered(_ input: JSONValue, picks: [String: [String]], other: [String: String]) -> JSONValue {
+        guard case .object(var fields) = input else { return input }
+        var answers: [String: JSONValue] = [:]
+        for q in all(in: input) {
+            var chosen = picks[q.question] ?? []
+            if let own = other[q.question]?.trimmingCharacters(in: .whitespacesAndNewlines), !own.isEmpty { chosen.append(own) }
+            if !chosen.isEmpty { answers[q.question] = .string(chosen.joined(separator: ", ")) }
+        }
+        fields["answers"] = .object(answers)
+        return .object(fields)
+    }
+}
+
+/// Claude's questions as a card you answer, not a permission to allow.
+private struct QuestionCard: View {
+    let approval: ApprovalRequest
+    let answer: (ApprovalAnswer) -> Void
+    @State private var picks: [String: [String]] = [:]
+    @State private var other: [String: String] = [:]
+
+    private var questions: [ClaudeQuestion] { ClaudeQuestion.all(in: approval.input) }
+
+    private var complete: Bool {
+        questions.allSatisfy { q in
+            !(picks[q.question] ?? []).isEmpty || !(other[q.question] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Claude has \(questions.count == 1 ? "a question" : "\(questions.count) questions")", systemImage: "questionmark.bubble")
+                .font(.headline)
+            ForEach(questions) { q in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        if !q.header.isEmpty {
+                            Text(q.header).font(.caption.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(.tint.opacity(0.15), in: .capsule)
+                        }
+                        Text(q.question).fontWeight(.medium)
+                    }
+                    if q.multiSelect { Text("Pick any").font(.caption).foregroundStyle(.secondary) }
+                    ForEach(q.options, id: \.label) { option in
+                        optionRow(option, in: q)
+                    }
+                    TextField("Other…", text: Binding(get: { other[q.question] ?? "" }, set: { other[q.question] = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            HStack {
+                Button("Skip") { answer(.deny("The user skipped these questions. Carry on with your best judgement, or ask in chat.")) }
+                    .secondaryButton()
+                Spacer()
+                Button("Answer") { answer(.allowWith(input: ClaudeQuestion.answered(approval.input, picks: picks, other: other), mode: nil)) }
+                    .primaryButton()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!complete)
+            }
+        }
+        .padding(14)
+        .glassEffect(.regular.tint(.purple.opacity(0.12)), in: .agentCard)
+    }
+
+    private func optionRow(_ option: ClaudeQuestion.Option, in q: ClaudeQuestion) -> some View {
+        let chosen = (picks[q.question] ?? []).contains(option.label)
+        return Button {
+            var list = picks[q.question] ?? []
+            if q.multiSelect {
+                if chosen { list.removeAll { $0 == option.label } } else { list.append(option.label) }
+            } else {
+                list = chosen ? [] : [option.label]
+            }
+            picks[q.question] = list
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: q.multiSelect ? (chosen ? "checkmark.square.fill" : "square") : (chosen ? "largecircle.fill.circle" : "circle"))
+                    .foregroundStyle(chosen ? Color.accentColor : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.label).fontWeight(.medium)
+                    if !option.description.isEmpty {
+                        Text(option.description).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .background(chosen ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06), in: .rect(cornerRadius: Radius.inset))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A finished question in the transcript: what was asked, and what you answered.
+private struct QuestionsAnswered: View {
+    let input: JSONValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(ClaudeQuestion.all(in: input)) { q in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(q.question).fontWeight(.medium)
+                    // Answers given in AgentX are in the input; otherwise they're in the result below.
+                    if let answer = input["answers"]?[q.question]?.string { Text(answer).foregroundStyle(.secondary) }
+                }
+            }
+        }
     }
 }

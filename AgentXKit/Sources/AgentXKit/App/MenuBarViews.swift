@@ -75,9 +75,14 @@ struct MenuBarContent: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                         HStack {
-                            Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton()
-                            Spacer()
-                            Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton()
+                            if approval.isQuestion {
+                                Spacer()
+                                Button("Answer…") { answerInApp(approval) }.primaryButton()
+                            } else {
+                                Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton()
+                                Spacer()
+                                Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton()
+                            }
                         }
                     }
                     .padding(10)
@@ -148,5 +153,10 @@ struct MenuBarContent: View {
     private func show(_ key: String) {
         model.openSession(key)
         openMain()
+    }
+
+    /// A question is answered on its card in the session.
+    private func answerInApp(_ approval: ApprovalRequest) {
+        if let key = model.sessions.conversationKey(for: approval) { show(key) } else { openMain() }
     }
 }

@@ -280,8 +280,15 @@ private struct AgentsCard: View {
                     Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
                     Text(approval.headline).lineLimit(1)
                     Spacer()
-                    Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton().controlSize(.small)
-                    Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton().controlSize(.small)
+                    if approval.isQuestion {
+                        Button("Answer…") {
+                            if let key = model.sessions.conversationKey(for: approval) { model.openSession(key) }
+                        }
+                        .primaryButton().controlSize(.small)
+                    } else {
+                        Button("Deny") { model.sessions.answer(approval, .deny()) }.secondaryButton().controlSize(.small)
+                        Button("Allow") { model.sessions.answer(approval, .allow) }.primaryButton().controlSize(.small)
+                    }
                 }
                 .font(.callout)
                 .padding(8)

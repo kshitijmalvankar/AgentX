@@ -55,6 +55,17 @@ public final class Conversation: Identifiable {
     public var liveState: LiveState?
     public var model: String?
     public var permissionMode: PermissionModeOption = .default
+    /// The newest plan Claude proposed in this conversation (ExitPlanMode), and its file.
+    public var latestPlan: (text: String, path: String?)? {
+        for item in items.reversed() {
+            if case .tool(let call) = item.kind, call.name == "ExitPlanMode",
+               let text = call.input["plan"]?.string, !text.isEmpty {
+                return (text, call.input["planFilePath"]?.string)
+            }
+        }
+        return nil
+    }
+
     /// Reasoning effort (nil: the model's default).
     public var effort: EffortOption?
     /// Ultracode: Claude Code's dynamic-workflow orchestration (coding sessions).

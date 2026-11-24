@@ -6,9 +6,12 @@ struct ConversationView: View {
     @Bindable var conversation: Conversation
 
     enum Tab: String, CaseIterable, Identifiable {
-        case chat = "Chat", terminal = "Terminal"
+        case chat = "Chat", plan = "Plan", terminal = "Terminal"
         var id: String { rawValue }
     }
+
+    /// The Plan tab shows only once Claude has proposed one.
+    private var tabs: [Tab] { conversation.latestPlan == nil ? [.chat, .terminal] : Tab.allCases }
 
     @State private var tab: Tab = .chat
     @State private var draft = ""
@@ -33,6 +36,8 @@ struct ConversationView: View {
                         SessionControls(conversation: conversation)
                     }
                 }
+            case .plan:
+                PlanTab(conversation: conversation)
             case .terminal:
                 TerminalTab(conversation: conversation, startPhoneSync: startPhoneSync)
             }
@@ -77,7 +82,7 @@ struct ConversationView: View {
                                 : "Continue on phone: run this session with Remote Control so you can keep going from the Claude app.")
 
             Picker("View", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(tabs) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -569,6 +574,36 @@ struct SessionControls: View {
 
     @ViewBuilder private func checked(_ on: Bool, _ title: String) -> some View {
         if on { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+}
+
+// MARK: - Plan tab
+
+/// The newest plan in this conversation, as a document (like the Claude app's plan view).
+private struct PlanTab: View {
+    let conversation: Conversation
+
+    var body: some View {
+        if let plan = conversation.latestPlan {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Plan", systemImage: "list.bullet.clipboard").font(.title3.weight(.semibold))
+                        Spacer()
+                        if conversation.permissionMode == .plan {
+                            Text("Plan mode: Claude is still planning").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    PlanDocument(plan: plan.text, path: plan.path, maxHeight: nil)
+                }
+                .readingColumn()
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+            }
+        } else {
+            ContentUnavailableView("No plan yet", systemImage: "list.bullet.clipboard",
+                                   description: Text("Switch the mode to Plan, and Claude writes a plan here before changing anything."))
+        }
     }
 }
 
