@@ -6,8 +6,6 @@ import SwiftUI
 struct DashboardView: View {
     @Environment(AppModel.self) private var model
 
-    private let columns = [GridItem(.adaptive(minimum: 340), spacing: 16, alignment: .top)]
-
     var body: some View {
         ScrollView {
             // Everything arrives in reading order, a beat apart.
@@ -16,7 +14,7 @@ struct DashboardView: View {
                 StatusStrip().arrives(delay: 0.02)
 
                 section("Work") {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                    CardGrid {
                         PullRequestsCard().arrives(delay: 0.04)
                         AgentsCard().arrives(delay: 0.06)
                         RecentSessionsCard().arrives(delay: 0.08)
@@ -26,21 +24,22 @@ struct DashboardView: View {
                 }
 
                 section("Your day") {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                    CardGrid {
                         TodayCard().arrives(delay: 0.14)
                         AutomationsCard().arrives(delay: 0.16)
                     }
                 }
 
                 section("Claude and this Mac") {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                    CardGrid {
                         PlanCard().arrives(delay: 0.18)
                         VitalsCard().arrives(delay: 0.20)
                     }
                 }
             }
             .padding(.horizontal, 28)
-            .padding(.vertical, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 44)   // room below the last row, clear of the window's rounded corner
             .frame(maxWidth: 1200)
             .frame(maxWidth: .infinity)
         }

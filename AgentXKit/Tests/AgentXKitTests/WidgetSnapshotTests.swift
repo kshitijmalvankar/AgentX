@@ -42,3 +42,16 @@ struct WidgetSnapshotTests {
         #expect(snapshot.github == nil && snapshot.vitals == nil)
     }
 }
+
+@Suite("Dashboard card grid")
+struct CardGridTests {
+    @Test func rowsFillTheWidthWithoutLoneCards() {
+        let grid = CardGrid(minimum: 340, spacing: 16)
+        #expect(grid.columns(for: 1100, count: 2) == 2, "two cards share a wide row")
+        #expect(grid.columns(for: 1100, count: 4) == 2, "four cards: two rows of two, not three and one")
+        #expect(grid.columns(for: 1100, count: 3) == 3)
+        #expect(grid.columns(for: 1100, count: 5) == 3, "three and two is fine")
+        #expect(grid.columns(for: 600, count: 4) == 1, "narrow: one column")
+        #expect(grid.columns(for: 700, count: 4) == 2)
+    }
+}

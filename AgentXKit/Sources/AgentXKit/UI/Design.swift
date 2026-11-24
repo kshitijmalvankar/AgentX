@@ -83,3 +83,54 @@ struct FlowLayout: Layout {
         return rows.filter { !$0.indices.isEmpty }
     }
 }
+
+/// Dashboard cards in rows that fill the width: as many columns as fit (each at least
+/// `minimum` wide), never more columns than cards, and no card left alone on a row when
+/// that can be avoided (four cards make two rows of two). Each row is as tall as its
+/// tallest card. Not lazy: a handful of cards, and its height is always exact.
+struct CardGrid: Layout {
+    var minimum: CGFloat = 340
+    var spacing: CGFloat = 16
+
+    func columns(for width: CGFloat, count: Int) -> Int {
+        guard count > 0 else { return 1 }
+        var columns = min(count, max(1, Int((width + spacing) / (minimum + spacing))))
+        if columns > 2, count % columns == 1 { columns -= 1 }
+        return columns
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? minimum * 2 + spacing
+        let heights = rowHeights(width: width, subviews: subviews)
+        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let columns = columns(for: bounds.width, count: subviews.count)
+        let width = columnWidth(bounds.width, columns)
+        var y = bounds.minY
+        for (row, height) in rowHeights(width: bounds.width, subviews: subviews).enumerated() {
+            for column in 0..<columns {
+                let index = row * columns + column
+                guard index < subviews.count else { break }
+                subviews[index].place(at: CGPoint(x: bounds.minX + CGFloat(column) * (width + spacing), y: y),
+                                      proposal: ProposedViewSize(width: width, height: height))
+            }
+            y += height + spacing
+        }
+    }
+
+    private func columnWidth(_ total: CGFloat, _ columns: Int) -> CGFloat {
+        max(0, (total - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+    }
+
+    private func rowHeights(width: CGFloat, subviews: Subviews) -> [CGFloat] {
+        let columns = columns(for: width, count: subviews.count)
+        let column = columnWidth(width, columns)
+        return stride(from: 0, to: subviews.count, by: columns).map { start in
+            (start..<min(start + columns, subviews.count))
+                .map { subviews[$0].sizeThatFits(ProposedViewSize(width: column, height: nil)).height }
+                .max() ?? 0
+        }
+    }
+}
